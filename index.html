@@ -1,56 +1,207 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HKDSE 物理科互動模擬實驗室</title>
+    <title>DSE Physics Simulation Hub</title>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            startup: {
+                ready: () => {
+                    console.log('MathJax is ready!');
+                    MathJax.startup.defaultReady();
+                    // 當 MathJax 引擎準備就緒後，才開始渲染 HTML 內容
+                    renderSimulations();
+                }
+            }
+        };
+    </script>
+    <script type="text/javascript" id="MathJax-script" async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+        </script>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; line-height: 1.6; background-color: #f4f7f6; margin: 0; padding: 0; }
-        header { background: #2c3e50; color: white; padding: 20px; text-align: center; }
-        .container { max-width: 900px; margin: 20px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h2 { color: #2980b9; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .sim-list { list-style: none; padding: 0; }
-        .sim-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee; transition: 0.3s; }
-        .sim-item:hover { background-color: #f9f9f9; }
-        .sim-info h3 { margin: 0; color: #333; }
-        .sim-info p { margin: 5px 0 0; color: #666; font-size: 14px; }
-        .btn-go { background: #27ae60; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; }
-        .footer { text-align: center; font-size: 12px; color: #999; margin-top: 40px; padding-bottom: 20px; }
+        :root {
+            --primary: #2c3e50;
+            --secondary: #3498db;
+            --accent: #27ae60;
+        }
+
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            background: #f8f9fa;
+            margin: 0;
+            color: #333;
+        }
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .category-section {
+            margin-bottom: 3rem;
+        }
+
+        .category-title {
+            border-left: 5px solid var(--secondary);
+            padding-left: 1rem;
+            margin-bottom: 1.5rem;
+            color: var(--primary);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card h3 {
+            margin: 0 0 0.5rem 0;
+            color: #2c3e50;
+        }
+
+        .card p {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            flex-grow: 1;
+        }
+
+        .btn {
+            display: block;
+            text-align: center;
+            background: var(--accent);
+            color: white;
+            text-decoration: none;
+            padding: 0.6rem;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+
+        .tag {
+            font-size: 0.75rem;
+            background: #e8f4fd;
+            padding: 2px 8px;
+            border-radius: 10px;
+            color: var(--secondary);
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
 
-<header>
-    <h1>HKDSE Physics Interactive Simulations</h1>
-    <p>中四至中六物理科自學資源庫</p>
-</header>
+    <header>
+        <h1>HKDSE 物理科互動實驗室</h1>
+        <p>按課程範疇分類的互動學習資源</p>
+    </header>
 
-<div class="container">
-    <h2>範疇三：電和磁 (Electromagnetism)</h2>
-    <ul class="sim-list">
-        <li class="sim-item">
-            <div class="sim-info">
-                <h3>1. 靜電感應與接地流動</h3>
-                <p>教學重點：電子分佈、庫倫排斥力、接地 (Earthing) 的微觀機制。</p>
-            </div>
-            <a href="04em/1-1_induced-charge.html" class="btn-go">開始實驗</a>
-        </li>
-        <li class="sim-item" style="opacity: 0.6;">
-            <div class="sim-info">
-                <h3>2. 磁場與電流 (準備中)</h3>
-                <p>教學重點：右手定則、長直導線的磁場分佈。</p>
-            </div>
-            <span class="btn-go" style="background:#95a5a6;">Coming Soon</span>
-        </li>
-    </ul>
+    <div class="container" id="main-content">
+    </div>
 
-    <h2>範疇一：力學 (Mechanics)</h2>
-    <p style="color: #999; padding-left: 15px;">暫無可用模擬，正在開發中。</p>
-</div>
+    <script>
+        // 1. 這裡就是您的「資料庫」，以後增加實驗只需在這裡加一行
+        const simulations = [
+            {
+                title: "靜電感應與接地",
+                file: "04em/1-1_induced-charge.html",
+                category: "04電和磁",
+                desc: "觀察電子受外部帶電體影響的移動、庫倫排斥力及接地的微觀流向。",
+                id: "BK4-01-靜電"
+            },
+            // {
+            //     title: "靜電感應與接地2",
+            //     file: "04em/1-1_induced-charge2.html",
+            //     category: "04電和磁",
+            //     desc: "觀察電子受外部帶電體影響的移動、庫倫排斥力及接地的微觀流向。",
+            //     id: "BK4-01-靜電"
+            // },
+            // {
+            //     title: "Testing-title",
+            //     file: "#",
+            //     category: "01熱和氣體",
+            //     desc: "模擬加熱過程，計算不同物質的溫度變化與能量關係。",
+            //     id: "E1-01"
+            // },
+            // {
+            //     title: "放射性衰變",
+            //     file: "#",
+            //     category: "05原子物理",
+            //     desc: "以隨機機率演示半衰期概念及 $N = N_0 e^{-\\lambda t}$ 關係。",
+            //     id: "E5-01"
+            // }
+        ];
 
-<div class="footer">
-    <p>© 2024 HKDSE Physics Assistant | 建議使用 Chrome 或 Edge 瀏覽器以獲得最佳體驗</p>
-</div>
+        // 2. 自動分類邏輯
+        function renderSimulations() {
+            const mainContent = document.getElementById('main-content');
+            if (!mainContent) return;
+
+            mainContent.innerHTML = ""; // 清除加載中文字
+
+            // 獲取所有不重複的分類
+            const categories = [...new Set(simulations.map(s => s.category))];
+
+            categories.forEach(cat => {
+                // 建立分類容器
+                const section = document.createElement('section');
+                section.className = 'category-section';
+                section.innerHTML = `<h2 class="category-title">${cat}</h2>`;
+
+                const grid = document.createElement('div');
+                grid.className = 'grid';
+
+                // 篩選該分類下的所有實驗
+                const filteredSims = simulations.filter(s => s.category === cat);
+
+                filteredSims.forEach(sim => {
+                    grid.innerHTML += `
+                <div class="card">
+                    <div class="card-header">
+                        <span class="tag">${sim.id}</span>
+                    </div>
+                    <h3>${sim.title}</h3>
+                    <p>${sim.desc}</p>
+                    <a href="${sim.file}" class="btn">進入實驗室</a>
+                </div>
+            `;
+                });
+
+                section.appendChild(grid);
+                mainContent.appendChild(section);
+            });
+
+            // 通知 MathJax 渲染動態生成的 LaTeX 公式
+            if (window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise();
+            }
+        }
+
+    </script>
 
 </body>
+
 </html>
