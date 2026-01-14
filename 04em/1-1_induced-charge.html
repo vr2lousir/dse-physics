@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>HKDSE 物理：電荷計數與感應模擬</title>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f7f6; margin: 0; padding: 10px; }
+        canvas { background: #fff; border: 2px solid #333; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .ui-panel { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; width: 880px; display: inline-flex; justify-content: space-around; align-items: center; border: 1px solid #ccc; }
+        .slider-group { display: flex; flex-direction: column; align-items: center; width: 220px; }
+        .stats-panel { background: #2c3e50; color: #ecf0f1; padding: 10px 20px; border-radius: 5px; text-align: left; font-family: monospace; min-width: 200px; }
+        .stats-panel span { color: #f1c40f; font-weight: bold; }
+        button { padding: 10px 15px; font-size: 14px; cursor: pointer; border-radius: 5px; border: 1px solid #34495e; background: #ecf0f1; }
+        button.active { background: #27ae60; color: white; border-color: #27ae60; }
+        .reset-btn { background: #e74c3c; color: white; border: none; }
+    </style>
+</head>
+<body>
+
+    <h2>HKDSE 物理：電荷計數器與感應起電模擬</h2>
+
+    <div class="ui-panel">
+        <div class="slider-group">
+            <label>帶電棒電荷: <span id="chargeVal" style="color:#c0392b; font-weight:bold;">10</span></label>
+            <input type="range" id="chargeSlider" min="-20" max="20" value="10" step="1" style="width: 180px;">
+        </div>
+        
+        <div class="stats-panel">
+            質子數 (+): <span id="pCount">0</span><br>
+            電子數 (-): <span id="eCount">0</span><br>
+            淨電荷 (Q): <span id="netCharge">0</span>
+        </div>
+
+        <button id="earthBtn" onclick="toggleEarthing()">開啟接地 (Earth)</button>
+        <button class="reset-btn" onclick="resetSim()">重設實驗</button>
+    </div>
+
+    <br>
+    <canvas id="simCanvas" width="900" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+const chargeSlider = document.getElementById('chargeSlider');
+const chargeValDisplay = document.getElementById('chargeVal');
+const pCountDisp = document.getElementById('pCount');
+const eCountDisp = document.getElementById('eCount');
+const netChargeDisp = document.getElementById('netCharge');
+const earthBtn = document.getElementById('earthBtn');
+
+let rod = { x: 750, y: 250, w: 40, h: 160, dragging: false, charge: 10 };
+const sphere = { x: 380, y: 250, r: 135 };
+let isEarthed = false;
+let earthParticles = [];
+
+let protons = [];
+let electrons = [];
+
+function init() {
+    protons = [];
+    electrons = [];
+    const spacing = 32; 
+    for (let x = sphere.x - sphere.r; x < sphere.x + sphere.r; x += spacing) {
+        for (let y = sphere.y - sphere.r; y < sphere.y + sphere.r; y += spacing) {
+            if (Math.hypot(x - sphere.x, y - sphere.y) < sphere.r - 25) {
+                protons.push({ x: x, y: y });
+                electrons.push({ x: x, y: y, vx: 0, vy: 0 });
+            }
+        }
+    }
+    updateStats();
+}
+
+function updateStats() {
+    const p = protons.length;
+    const e = electrons.length;
+    const net = p - e;
+    pCountDisp.innerText = p;
+    eCountDisp.innerText = e;
+    netChargeDisp.innerText = (net > 0 ? "+" : "") + net;
+    netChargeDisp.style.color = net === 0 ? "#f1c40f" : (net > 0 ? "#e74c3c" : "#3498db");
+}
+
+function toggleEarthing() {
+    isEarthed = !isEarthed;
+    earthBtn.classList.toggle('active', isEarthed);
+    earthBtn.innerText = isEarthed ? "斷開接地 (Earth ON)" : "開啟接地 (Earth OFF)";
+}
+
+function resetSim() {
+    init();
+    isEarthed = false;
+    earthBtn.classList.remove('active');
+    earthBtn.innerText = "開啟接地 (Earth OFF)";
+    rod.x = 750; rod.y = 250;
+    earthParticles = [];
+}
+
+// 鼠標交互
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (mx > rod.x - rod.w/2 && mx < rod.x + rod.w/2 && my > rod.y - rod.h/2 && my < rod.y + rod.h/2) {
+        rod.dragging = true;
+    }
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (rod.dragging) {
+        const rect = canvas.getBoundingClientRect();
+        let tx = e.clientX - rect.left;
+        let ty = e.clientY - rect.top;
+        const dist = Math.hypot(tx - sphere.x, ty - sphere.y);
+        const minDist = sphere.r + 50;
+        if (dist < minDist) {
+            const angle = Math.atan2(ty - sphere.y, tx - sphere.x);
+            rod.x = sphere.x + minDist * Math.cos(angle);
+            rod.y = sphere.y + minDist * Math.sin(angle);
+        } else {
+            rod.x = tx; rod.y = ty;
+        }
+    }
+});
+
+window.addEventListener('mouseup', () => { rod.dragging = false; });
+
+chargeSlider.oninput = function() {
+    rod.charge = parseInt(this.value);
+    chargeValDisplay.innerText = rod.charge;
+};
+
+function update() {
+    // 1. 接地平衡邏輯
+    if (isEarthed) {
+        // 模擬電勢平衡：目標電子數取決於棒的距離與電荷
+        let distRod = Math.hypot(rod.x - sphere.x, rod.y - sphere.y);
+        let targetCount = protons.length + (rod.charge * 2.8 * (250 / distRod));
+        
+        if (electrons.length < targetCount - 0.5 && Math.random() > 0.4) {
+            electrons.push({ x: sphere.x - sphere.r, y: sphere.y, vx: -3, vy: 0 });
+            earthParticles.push({ y: 450, dir: -1 });
+        } else if (electrons.length > targetCount + 0.5 && Math.random() > 0.4) {
+            electrons.splice(Math.floor(Math.random() * electrons.length), 1);
+            earthParticles.push({ y: sphere.y, dir: 1 });
+        }
+        updateStats();
+    }
+
+    // 更新接地粒子
+    earthParticles.forEach((p, index) => {
+        p.y += p.dir * 6;
+        if (p.y < sphere.y || p.y > 450) earthParticles.splice(index, 1);
+    });
+
+    // 2. 電子動力學 (庫倫排斥 + 外部感應)
+    electrons.forEach((e1, i) => {
+        // 外部感應力
+        const dxR = rod.x - e1.x;
+        const dyR = rod.y - e1.y;
+        const d2R = dxR*dxR + dyR*dyR;
+        const fRod = (rod.charge * 18000) / (d2R + 600); 
+        e1.vx += (dxR / Math.sqrt(d2R)) * fRod;
+        e1.vy += (dyR / Math.sqrt(d2R)) * fRod;
+
+        // 電子間相互排斥 (庫倫定律)
+        electrons.forEach((e2, j) => {
+            if (i === j) return;
+            const dxE = e1.x - e2.x;
+            const dyE = e1.y - e2.y;
+            const d2E = dxE*dxE + dyE*dyE + 120;
+            const repulseF = 220 / d2E; 
+            e1.vx += (dxE / Math.sqrt(d2E)) * repulseF;
+            e1.vy += (dyE / Math.sqrt(d2E)) * repulseF;
+        });
+
+        // 原子核恢復力 (維持結構)
+        const p = protons[i % protons.length];
+        e1.vx += (p.x - e1.x) * 0.025;
+        e1.vy += (p.y - e1.y) * 0.025;
+
+        // 更新位置
+        e1.vx *= 0.6; e1.vy *= 0.6;
+        e1.x += e1.vx; e1.y += e1.vy;
+        
+        // 邊界限制
+        const d = Math.hypot(e1.x - sphere.x, e1.y - sphere.y);
+        if (d > sphere.r - 10) {
+            const angle = Math.atan2(e1.y - sphere.y, e1.x - sphere.x);
+            e1.x = sphere.x + (sphere.r - 10) * Math.cos(angle);
+            e1.y = sphere.y + (sphere.r - 10) * Math.sin(angle);
+        }
+    });
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 接地線與流動
+    if (isEarthed) {
+        ctx.beginPath();
+        ctx.moveTo(sphere.x - sphere.r + 10, sphere.y);
+        ctx.lineTo(sphere.x - sphere.r - 80, sphere.y);
+        ctx.lineTo(sphere.x - sphere.r - 80, 450);
+        ctx.strokeStyle = "#95a5a6";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        earthParticles.forEach(p => {
+            ctx.fillStyle = "#2980b9";
+            ctx.beginPath(); ctx.arc(sphere.x - sphere.r - 80, p.y, 5, 0, Math.PI*2); ctx.fill();
+        });
+    }
+
+    // 金屬球
+    ctx.beginPath();
+    ctx.arc(sphere.x, sphere.y, sphere.r, 0, Math.PI * 2);
+    ctx.fillStyle = "#fdfdfd";
+    ctx.fill();
+    ctx.strokeStyle = "#2c3e50";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // 帶電棒
+    ctx.save();
+    ctx.translate(rod.x, rod.y);
+    ctx.fillStyle = rod.charge >= 0 ? "#e74c3c" : "#3498db";
+    ctx.fillRect(-rod.w/2, -rod.h/2, rod.w, rod.h);
+    ctx.fillStyle = "white";
+    ctx.font = "bold 18px Arial";
+    ctx.textAlign = "center";
+    let sign = rod.charge >= 0 ? "+" : "-";
+    let count = Math.min(Math.abs(rod.charge), 8);
+    for(let i=0; i<count; i++) {
+        ctx.fillText(sign, 0, -rod.h/2 + 25 + i*(rod.h/(count+1)));
+    }
+    ctx.restore();
+
+    // 繪製正電荷
+    protons.forEach(p => {
+        ctx.fillStyle = "rgba(192, 57, 43, 0.35)";
+        ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.font = "bold 10px Arial"; ctx.fillText("+", p.x - 3, p.y + 4);
+    });
+
+    // 繪製電子
+    electrons.forEach(e => {
+        ctx.fillStyle = "#2980b9";
+        ctx.beginPath(); ctx.arc(e.x, e.y, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.font = "bold 12px Arial"; ctx.fillText("-", e.x - 4, e.y + 5);
+    });
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+init();
+draw();
+</script>
+</body>
+</html>
