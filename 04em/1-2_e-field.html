@@ -1,0 +1,538 @@
+
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HKDSE 物理模擬：電場疊加 (邊界修正版)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden; /* 防止捲動 */
+        }
+        
+        #controls {
+            background: white;
+            padding: 10px 20px;
+            border-bottom: 1px solid #ccc;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            z-index: 10;
+            box-sizing: border-box;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            background: #f9f9f9;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .control-group h4 {
+            margin: 0 0 5px 0;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        label {
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        select, input[type=range] { margin-top: 2px; }
+
+        #canvas-container {
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            background-color: #fff;
+            cursor: default; /* 預設鼠標 */
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.9);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            border: 1px solid #ccc;
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <div class="control-group">
+            <h4>主電荷 (Q1)</h4>
+            <label>電荷量: <span id="valQ1" style="width:35px; text-align:right;">+1</span> μC</label>
+            <input type="range" id="sliderQ1" min="-5" max="5" step="1" value="1">
+        </div>
+
+        <div class="control-group">
+            <h4>第二物體 (Q2)</h4>
+            <select id="selectObj2">
+                <option value="none">無 (None)</option>
+                <option value="point">點電荷 (Point Charge)</option>
+                <option value="plate">帶電板 (Charged Plate)</option>
+            </select>
+            <div id="controlsObj2" style="display:none; margin-top:5px; width: 100%;">
+                <label>電荷量: <span id="valQ2" style="width:35px; text-align:right;">-1</span></label>
+                <input type="range" id="sliderQ2" min="-5" max="5" step="1" value="-1">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h4>顯示設定</h4>
+            <label><input type="checkbox" id="chkGrid" checked> 顯示網格</label>
+            <label>線密度: <input type="range" id="sliderDensity" min="4" max="12" step="1" value="8"></label>
+        </div>
+        
+        <div style="font-size: 0.8rem; color: #666; max-width: 200px;">
+            <strong>提示：</strong><br>
+            拖曳物體改變位置。<br>
+            物體已限制在畫面內。
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="simCanvas"></canvas>
+        <div id="legend">
+            <strong>電場強度 E</strong><br>
+            <span style="color:rgb(255,0,0)">█</span> 強 (Strong)<br>
+            <span style="color:rgb(150,0,150)">█</span> 中 (Medium)<br>
+            <span style="color:rgb(0,0,255)">█</span> 弱 (Weak)
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        
+        // UI 元素
+        const sliderQ1 = document.getElementById('sliderQ1');
+        const valQ1 = document.getElementById('valQ1');
+        const selectObj2 = document.getElementById('selectObj2');
+        const controlsObj2 = document.getElementById('controlsObj2');
+        const sliderQ2 = document.getElementById('sliderQ2');
+        const valQ2 = document.getElementById('valQ2');
+        const sliderDensity = document.getElementById('sliderDensity');
+        const chkGrid = document.getElementById('chkGrid');
+
+        // 狀態管理
+        let width, height;
+        const state = {
+            objects: [
+                { type: 'point', x: 0, y: 0, q: 1, radius: 15 } // 主電荷
+            ],
+            linesPerQ: 8,
+            stepSize: 10,
+            maxSteps: 400
+        };
+
+        // 限制數值在範圍內的輔助函數
+        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
+        // 初始化
+        function init() {
+            resize();
+            resetPositions();
+            updateFromUI();
+            loop();
+        }
+
+        function resize() {
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+            
+            // 視窗改變大小時，確保物體回到可見範圍
+            validatePositions();
+        }
+
+        function validatePositions() {
+            state.objects.forEach(obj => {
+                const margins = getObjectMargins(obj);
+                obj.x = clamp(obj.x, margins.xMin, margins.xMax);
+                obj.y = clamp(obj.y, margins.yMin, margins.yMax);
+            });
+        }
+
+        // 獲取物件的邊界限制
+        function getObjectMargins(obj) {
+            const padding = 20; // 邊緣保留距離
+            if (obj.type === 'plate') {
+                const halfLen = obj.length / 2;
+                return {
+                    xMin: padding + 10,
+                    xMax: width - padding - 10,
+                    yMin: halfLen + padding, 
+                    yMax: height - halfLen - padding
+                };
+            } else {
+                // Point charge
+                return {
+                    xMin: obj.radius + padding,
+                    xMax: width - obj.radius - padding,
+                    yMin: obj.radius + padding,
+                    yMax: height - obj.radius - padding
+                };
+            }
+        }
+
+        function resetPositions() {
+            // 將電荷放在畫布中心左右
+            state.objects[0].x = width * 0.3;
+            state.objects[0].y = height * 0.5;
+        }
+
+        // 當切換第二物體時
+        selectObj2.addEventListener('change', () => {
+            const type = selectObj2.value;
+            state.objects.splice(1); // 移除舊的第二物體
+            
+            if (type !== 'none') {
+                controlsObj2.style.display = 'block';
+                // 新增物體
+                let newObj = {
+                    type: type,
+                    x: width * 0.7,
+                    y: height * 0.5,
+                    q: parseFloat(sliderQ2.value),
+                };
+                
+                if (type === 'plate') {
+                    newObj.length = 200;
+                } else {
+                    newObj.radius = 15;
+                }
+                
+                state.objects.push(newObj);
+                validatePositions(); // 確保新生成的物體在界內
+            } else {
+                controlsObj2.style.display = 'none';
+            }
+            updateFromUI();
+        });
+
+        // 監聽輸入
+        [sliderQ1, sliderQ2, sliderDensity].forEach(el => {
+            el.addEventListener('input', updateFromUI);
+        });
+
+        function updateFromUI() {
+            state.objects[0].q = parseFloat(sliderQ1.value);
+            valQ1.textContent = (state.objects[0].q > 0 ? "+" : "") + state.objects[0].q;
+
+            if (state.objects.length > 1) {
+                state.objects[1].q = parseFloat(sliderQ2.value);
+                valQ2.textContent = (state.objects[1].q > 0 ? "+" : "") + state.objects[1].q;
+            }
+            
+            state.linesPerQ = parseInt(sliderDensity.value);
+        }
+
+        // 物理核心：計算電場向量 E
+        function getElectricField(x, y) {
+            let Ex = 0;
+            let Ey = 0;
+            const k = 5000; 
+
+            state.objects.forEach(obj => {
+                if (Math.abs(obj.q) < 0.1) return;
+
+                if (obj.type === 'point') {
+                    const dx = x - obj.x;
+                    const dy = y - obj.y;
+                    const r2 = dx*dx + dy*dy;
+                    const r = Math.sqrt(r2);
+                    if (r < 10) return; 
+
+                    const E = k * obj.q / r2;
+                    Ex += E * (dx / r);
+                    Ey += E * (dy / r);
+                } 
+                else if (obj.type === 'plate') {
+                    // 模擬板 (積分近似)
+                    const numSegments = 25;
+                    const dq = obj.q / numSegments;
+                    const halfLen = obj.length / 2;
+                    
+                    for(let i=0; i<numSegments; i++) {
+                        const py = obj.y - halfLen + (i * obj.length/numSegments) + (obj.length/numSegments/2);
+                        const dx = x - obj.x;
+                        const dy = y - py;
+                        const r2 = dx*dx + dy*dy;
+                        const r = Math.sqrt(r2);
+                        if (r < 5) continue;
+
+                        const E = (k/4) * dq / r2; 
+                        Ex += E * (dx / r);
+                        Ey += E * (dy / r);
+                    }
+                }
+            });
+
+            return { Ex, Ey };
+        }
+
+        // --- 拖曳與邊界邏輯 ---
+        let draggedObj = null;
+
+        canvas.addEventListener('mousedown', e => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            // 尋找點擊的物體
+            for (let obj of state.objects) {
+                let hit = false;
+                if (obj.type === 'point') {
+                    const d = Math.sqrt((mx - obj.x)**2 + (my - obj.y)**2);
+                    if (d < 25) hit = true; // 增加一點點擊範圍方便操作
+                } else if (obj.type === 'plate') {
+                    const dx = Math.abs(mx - obj.x);
+                    const dy = Math.abs(my - obj.y);
+                    if (dx < 20 && dy < obj.length/2) hit = true;
+                }
+
+                if (hit) {
+                    draggedObj = obj;
+                    canvas.style.cursor = 'grabbing';
+                    break;
+                }
+            }
+        });
+
+        window.addEventListener('mousemove', e => {
+            if (draggedObj) {
+                const rect = canvas.getBoundingClientRect();
+                const rawX = e.clientX - rect.left;
+                const rawY = e.clientY - rect.top;
+
+                // 應用邊界限制 (Boundary Constraints)
+                const margins = getObjectMargins(draggedObj);
+                draggedObj.x = clamp(rawX, margins.xMin, margins.xMax);
+                draggedObj.y = clamp(rawY, margins.yMin, margins.yMax);
+            } else {
+                // Hover 效果
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                let hover = false;
+                for (let obj of state.objects) {
+                    if (obj.type === 'point') {
+                        if (Math.hypot(mx-obj.x, my-obj.y) < 20) hover = true;
+                    } else if (obj.type === 'plate') {
+                         if (Math.abs(mx-obj.x)<15 && Math.abs(my-obj.y)<obj.length/2) hover = true;
+                    }
+                }
+                canvas.style.cursor = hover ? 'grab' : 'default';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            draggedObj = null;
+            canvas.style.cursor = 'default';
+        });
+        
+        window.addEventListener('resize', resize);
+
+
+        // 繪圖循環
+        function loop() {
+            ctx.clearRect(0, 0, width, height);
+            if (chkGrid.checked) drawGrid();
+            drawFieldLines();
+            drawObjects();
+            requestAnimationFrame(loop);
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#f0f0f0';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let x=0; x<width; x+=40) { ctx.moveTo(x,0); ctx.lineTo(x,height); }
+            for(let y=0; y<height; y+=40) { ctx.moveTo(0,y); ctx.lineTo(width,y); }
+            ctx.stroke();
+        }
+
+        function drawObjects() {
+            state.objects.forEach((obj, index) => {
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#333';
+                
+                if (obj.type === 'point') {
+                    ctx.beginPath();
+                    ctx.arc(obj.x, obj.y, obj.radius, 0, Math.PI*2);
+                    ctx.fillStyle = obj.q > 0 ? '#ff4444' : (obj.q < 0 ? '#4444ff' : '#ccc');
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(obj.q > 0 ? "+" : (obj.q < 0 ? "-" : "0"), obj.x, obj.y);
+                    
+                    // Label
+                    ctx.fillStyle = '#666';
+                    ctx.font = '12px Arial';
+                    ctx.fillText(index === 0 ? "Q1" : "Q2", obj.x, obj.y - 25);
+
+                } else if (obj.type === 'plate') {
+                    const half = obj.length/2;
+                    ctx.beginPath();
+                    ctx.rect(obj.x - 5, obj.y - half, 10, obj.length);
+                    ctx.fillStyle = obj.q > 0 ? '#ff8888' : (obj.q < 0 ? '#8888ff' : '#ccc');
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = 'white';
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    for(let i=-0.8; i<=0.8; i+=0.4) {
+                        ctx.fillText(obj.q > 0 ? "+" : "-", obj.x, obj.y + i*half);
+                    }
+                }
+            });
+        }
+
+        function drawArrow(x, y, angle, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(-5, -4);
+            ctx.lineTo(5, 0);
+            ctx.lineTo(-5, 4);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 場線追蹤
+        function drawFieldLines() {
+            state.objects.forEach(obj => {
+                if (Math.abs(obj.q) < 0.1) return;
+
+                const numLines = Math.floor(Math.abs(obj.q) * state.linesPerQ);
+                
+                for (let i = 0; i < numLines; i++) {
+                    let startX, startY;
+                    let dirSign = obj.q > 0 ? 1 : -1; 
+
+                    if (obj.type === 'point') {
+                        const angle = (Math.PI * 2 * i) / numLines;
+                        const dist = obj.radius + 2;
+                        startX = obj.x + Math.cos(angle) * dist;
+                        startY = obj.y + Math.sin(angle) * dist;
+                    } else if (obj.type === 'plate') {
+                        const side = (i % 2 === 0) ? 1 : -1; 
+                        // 改進：均勻分佈在板長上
+                        const segmentIndex = Math.floor(i / 2);
+                        const totalPairs = Math.ceil(numLines / 2);
+                        const ratio = (segmentIndex + 0.5) / totalPairs; // 0..1 centered
+                        const posAlongPlate = (ratio - 0.5) * obj.length * 0.9;
+                        
+                        startX = obj.x + side * 10; 
+                        startY = obj.y + posAlongPlate;
+                    }
+
+                    traceLine(startX, startY, dirSign);
+                }
+            });
+        }
+
+        function traceLine(x, y, sign) {
+            let points = [{x, y}];
+            let currX = x, currY = y;
+            let stop = false;
+
+            for (let step = 0; step < state.maxSteps; step++) {
+                const f = getElectricField(currX, currY);
+                const E = Math.sqrt(f.Ex**2 + f.Ey**2);
+                
+                if (E < 0.001) break;
+
+                const dx = (f.Ex / E) * state.stepSize * sign;
+                const dy = (f.Ey / E) * state.stepSize * sign;
+                
+                const nextX = currX + dx;
+                const nextY = currY + dy;
+
+                if (nextX < 0 || nextX > width || nextY < 0 || nextY > height) break;
+
+                // 碰撞檢測
+                for(let obj of state.objects) {
+                    if (sign === 1 && obj.q < 0) { // 正電荷發出，撞向負電荷
+                        if (obj.type==='point' && Math.hypot(nextX-obj.x, nextY-obj.y) < obj.radius) stop=true;
+                        if (obj.type==='plate' && Math.abs(nextX-obj.x)<10 && Math.abs(nextY-obj.y)<obj.length/2) stop=true;
+                    }
+                }
+                
+                points.push({x: nextX, y: nextY, e: E});
+                if (stop) break;
+
+                currX = nextX;
+                currY = nextY;
+            }
+
+            if (points.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                for(let i=1; i<points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+                
+                // 漸層色
+                const grad = ctx.createLinearGradient(points[0].x, points[0].y, points[points.length-1].x, points[points.length-1].y);
+                grad.addColorStop(0, "rgba(80,80,80,0.8)");
+                grad.addColorStop(1, "rgba(80,80,80,0.1)");
+                ctx.strokeStyle = grad;
+                ctx.stroke();
+
+                // 箭頭
+                if (points.length > 8) {
+                    const idx = Math.floor(points.length / 2);
+                    const p1 = points[idx], p2 = points[idx+1];
+                    if (p2) {
+                        const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                        // E mapping to color
+                        let r = Math.min(255, p1.e * 25000); 
+                        let b = 255 - r;
+                        let col = `rgb(${r}, 0, ${b})`;
+                        drawArrow(p1.x, p1.y, ang + (sign===-1 ? Math.PI : 0), col);
+                    }
+                }
+            }
+        }
+
+        init();
+
+    </script>
+</body>
+</html>

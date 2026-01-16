@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <title>力學大神：力的合成與分解模擬器 (v2.0 Snap版)</title>
+    <style>
+        body { font-family: "Segoe UI", sans-serif; text-align: center; background: #f4f4f9; color: #333; }
+        h2 { margin-bottom: 5px; }
+        canvas { background: #fff; border: 2px solid #444; cursor: crosshair; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .controls { margin: 15px 0; padding: 10px; background: #e0e0e0; display: inline-block; border-radius: 8px; }
+        .readout { font-family: 'Courier New', monospace; margin-top: 15px; font-size: 1.1em; background: #fff; display: inline-block; padding: 15px; border: 1px solid #ccc; border-radius: 5px;}
+        label { cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<h2>力的合成與分解 (精確版)</h2>
+<p>拖動箭頭頂端。開啟「磁吸」可精確定位於軸線。</p>
+
+<div class="controls">
+    <label>
+        <input type="checkbox" id="snapToggle" checked> 
+        開啟磁吸功能 (Snap to Grid/Axes)
+    </label>
+</div>
+<br>
+
+<canvas id="simCanvas" width="640" height="480"></canvas>
+<br>
+<div class="readout" id="readout"></div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const readout = document.getElementById('readout');
+    const snapToggle = document.getElementById('snapToggle');
+
+    // 原點設在中心
+    const origin = { x: 320, y: 240 };
+
+    // 初始向量
+    let v1 = { x: 120, y: -90 }; // 紅色 (3-4-5倍數)
+    let v2 = { x: 0, y: -150 };  // 藍色 (垂直)
+
+    let dragging = null;
+
+    function drawArrow(from, to, color, label, isResultant = false) {
+        const headlen = 12; 
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const length = Math.sqrt(dx*dx + dy*dy);
+        
+        // 防止長度為0時報錯
+        if (length < 1) return;
+
+        const angle = Math.atan2(dy, dx);
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = isResultant ? 4 : 2;
+        ctx.lineCap = "round";
+        
+        // 畫線
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+
+        // 畫箭頭
+        ctx.beginPath();
+        ctx.moveTo(to.x, to.y);
+        ctx.lineTo(to.x - headlen * Math.cos(angle - Math.PI / 6), to.y - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(to.x - headlen * Math.cos(angle + Math.PI / 6), to.y - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.lineTo(to.x, to.y);
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        // 標籤
+        ctx.fillStyle = color;
+        ctx.font = "bold 16px Arial";
+        ctx.fillText(label, to.x + 10, to.y);
+    }
+
+    function drawDashedLine(from, to) {
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = "#888";
+        ctx.lineWidth = 1;
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    function drawGrid() {
+        ctx.strokeStyle = "#f0f0f0";
+        ctx.lineWidth = 1;
+        // 垂直網格
+        for(let x=0; x<=canvas.width; x+=20) {
+            ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke();
+        }
+        // 水平網格
+        for(let y=0; y<=canvas.height; y+=20) {
+            ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+        }
+    }
+
+    function drawAxes() {
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, origin.y); ctx.lineTo(canvas.width, origin.y); // X軸
+        ctx.moveTo(origin.x, 0); ctx.lineTo(origin.x, canvas.height); // Y軸
+        ctx.stroke();
+        
+        ctx.fillStyle = "#333";
+        ctx.font = "12px Arial";
+        ctx.fillText("x", canvas.width - 15, origin.y - 5);
+        ctx.fillText("y", origin.x + 5, 15);
+    }
+
+    function update() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        drawGrid();
+        drawAxes();
+
+        // 畫 F1 (紅)
+        drawArrow(origin, {x: origin.x + v1.x, y: origin.y + v1.y}, "#d32f2f", "F1");
+        
+        // 畫 F2 (藍)
+        drawArrow(origin, {x: origin.x + v2.x, y: origin.y + v2.y}, "#1976d2", "F2");
+
+        // 合力 R
+        let r = { x: v1.x + v2.x, y: v1.y + v2.y };
+        
+        // 平行四邊形虛線
+        drawDashedLine({x: origin.x + v1.x, y: origin.y + v1.y}, {x: origin.x + r.x, y: origin.y + r.y});
+        drawDashedLine({x: origin.x + v2.x, y: origin.y + v2.y}, {x: origin.x + r.x, y: origin.y + r.y});
+
+        // 畫合力 R (綠)
+        drawArrow(origin, {x: origin.x + r.x, y: origin.y + r.y}, "#388e3c", "R", true);
+
+        // 顯示投影分量 (僅對合力顯示，避免混亂)
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#388e3c";
+        ctx.beginPath();
+        ctx.moveTo(origin.x + r.x, origin.y); ctx.lineTo(origin.x + r.x, origin.y + r.y); // 垂直到X軸
+        ctx.moveTo(origin.x, origin.y + r.y); ctx.lineTo(origin.x + r.x, origin.y + r.y); // 垂直到Y軸
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 數據計算
+        let magR = Math.sqrt(r.x**2 + r.y**2).toFixed(1);
+        let angleR = (Math.atan2(-r.y, r.x) * 180 / Math.PI).toFixed(1); // 轉為角度
+        if (angleR < 0) angleR = parseFloat(angleR) + 360; // 0-360表示
+
+        readout.innerHTML = `
+            <div><b style="color:#d32f2f">F1</b>: (${v1.x}, ${-v1.y})</div>
+            <div><b style="color:#1976d2">F2</b>: (${v2.x}, ${-v2.y})</div>
+            <hr style="margin: 5px 0">
+            <div><b style="color:#388e3c">合力 R</b>: (${r.x}, ${-r.y})</div>
+            <div>大小: <b>${magR}</b> | 角度: <b>${angleR}°</b> (逆時針自+x軸)</div>
+        `;
+    }
+
+    // 處理吸附邏輯
+    function snap(val, threshold = 15, grid = 10) {
+        if (!snapToggle.checked) return val;
+
+        // 1. 吸附到軸線 (0)
+        if (Math.abs(val) < threshold) return 0;
+
+        // 2. 吸附到網格 (10的倍數)
+        return Math.round(val / grid) * grid;
+    }
+
+    canvas.addEventListener('mousedown', e => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (Math.hypot(mouseX - (origin.x + v1.x), mouseY - (origin.y + v1.y)) < 25) dragging = 'v1';
+        else if (Math.hypot(mouseX - (origin.x + v2.x), mouseY - (origin.y + v2.y)) < 25) dragging = 'v2';
+    });
+
+    canvas.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        
+        // 原始計算位置
+        let rawX = e.clientX - rect.left - origin.x;
+        let rawY = e.clientY - rect.top - origin.y;
+
+        // 應用吸附
+        let finalX = snap(rawX);
+        let finalY = snap(rawY);
+
+        if (dragging === 'v1') { v1.x = finalX; v1.y = finalY; }
+        else if (dragging === 'v2') { v2.x = finalX; v2.y = finalY; }
+        
+        update();
+    });
+
+    canvas.addEventListener('mouseup', () => dragging = null);
+    
+    // 初始繪製
+    update();
+</script>
+
+</body>
+</html>
