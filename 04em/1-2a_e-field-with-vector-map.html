@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電場向量可視化 (E-Field Mapper)</title>
+
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script type="text/javascript" id="MathJax-script" async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+        </script>
+
+    <style>
+        canvas {
+            /* 其他樣式保持不變... */
+            touch-action: none;
+            /* 關鍵：防止手機上拖曳時畫面亂跑 */
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f4f7f6;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            user-select: none;
+            /* 防止拖曳時選中文字 */
+        }
+
+        header {
+            background: #2c3e50;
+            color: white;
+            width: 100%;
+            padding: 15px 0;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        #controls {
+            margin: 15px 0;
+            display: flex;
+            gap: 15px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            font-weight: bold;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .btn-pos {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-neg {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .btn-clear {
+            background-color: #95a5a6;
+            color: white;
+        }
+
+        canvas {
+            background: #ffffff;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+
+        .instruction {
+            margin-top: 10px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        #probe-readout {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            font-size: 0.9rem;
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h2>電場可視化實驗室 (E-Field Visualizer)</h2>
+    </header>
+
+    <div id="controls">
+        <button class="btn-pos" onclick="addCharge(1)">+ 加入正電荷 ($+Q$)</button>
+        <button class="btn-neg" onclick="addCharge(-1)">- 加入負電荷 ($-Q$)</button>
+        <button class="btn-clear" onclick="clearCharges()">重置實驗</button>
+    </div>
+
+    <canvas id="simCanvas" width="800" height="500"></canvas>
+
+    <div class="instruction">
+        操作：點擊按鈕加入電荷，<strong>拖曳電荷</strong>改變位置。移動鼠標使用「測試電荷」探測場強。
+    </div>
+
+    <div id="probe-readout">
+        $E$: <span id="e-val">0</span> $\mathrm{N~C^{-1}}$
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const readout = document.getElementById('probe-readout');
+        const eVal = document.getElementById('e-val');
+
+        // 物理物件
+        let charges = [];
+
+        // 游標/手指位置 (-1000 代表在畫布外)
+        let pointerX = -1000, pointerY = -1000;
+        let isDragging = false;
+        let dragIndex = -1;
+        let isInteracting = false; // 判斷是否正在觸摸/懸停
+
+        // 網格設定
+        const gridSize = 35;
+
+        // 初始化
+        function init() {
+            charges.push({ x: 300, y: 250, q: 1 });
+            charges.push({ x: 500, y: 250, q: -1 });
+            requestAnimationFrame(loop);
+        }
+
+        function addCharge(polarity) {
+            charges.push({
+                x: 100 + Math.random() * 600,
+                y: 100 + Math.random() * 300,
+                q: polarity
+            });
+        }
+
+        function clearCharges() {
+            charges = [];
+        }
+
+        function getFieldAt(x, y) {
+            let Ex = 0, Ey = 0;
+            const k = 8000;
+
+            charges.forEach(charge => {
+                let dx = x - charge.x;
+                let dy = y - charge.y;
+                let distSq = dx * dx + dy * dy;
+                if (distSq < 100) distSq = 100;
+
+                let dist = Math.sqrt(distSq);
+                let E_mag = (k * charge.q) / distSq;
+
+                Ex += E_mag * (dx / dist);
+                Ey += E_mag * (dy / dist);
+            });
+
+            return { x: Ex, y: Ey };
+        }
+
+        function loop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawVectorField();
+
+            charges.forEach(c => {
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, 18, 0, Math.PI * 2);
+                ctx.fillStyle = c.q > 0 ? '#e74c3c' : '#3498db';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(c.q > 0 ? '+' : '-', c.x, c.y);
+            });
+
+            // 只有當使用者正在互動（滑鼠懸停或手指按著）才顯示探測器
+            if (isInteracting) {
+                drawTestChargeProbe();
+            } else {
+                readout.style.display = 'none';
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        function drawVectorField() {
+            ctx.strokeStyle = '#aaa';
+            ctx.lineWidth = 1;
+
+            for (let x = gridSize / 2; x < canvas.width; x += gridSize) {
+                for (let y = gridSize / 2; y < canvas.height; y += gridSize) {
+                    let E = getFieldAt(x, y);
+                    let mag = Math.hypot(E.x, E.y);
+
+                    // 修正：場強太弱不繪製
+                    if (mag < 0.001) continue;
+
+                    let len = Math.min(gridSize * 0.8, 4 * Math.log(mag + 1));
+                    let angle = Math.atan2(E.y, E.x);
+                    let alpha = Math.min(1, mag / 10);
+
+                    ctx.strokeStyle = `rgba(100, 100, 100, ${0.3 + alpha * 0.7})`;
+                    drawArrow(x, y, x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+                }
+            }
+        }
+
+        function drawArrow(x1, y1, x2, y2, color) {
+            if (color) ctx.strokeStyle = color;
+            const headlen = 5;
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const angle = Math.atan2(dy, dx);
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.stroke();
+        }
+
+        function drawTestChargeProbe() {
+            // 邊界檢查
+            if (pointerX < 0 || pointerX > canvas.width || pointerY < 0 || pointerY > canvas.height) {
+                readout.style.display = 'none';
+                return;
+            }
+
+            readout.style.display = 'block';
+            let E = getFieldAt(pointerX, pointerY);
+            let mag = Math.hypot(E.x, E.y);
+
+            eVal.innerText = mag.toFixed(2);
+
+            // 畫黃色探測點
+            ctx.beginPath();
+            ctx.arc(pointerX, pointerY, 8, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(241, 196, 15, 0.8)';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // 修正：只有場強大於 0.01 才畫受力箭頭
+            if (mag > 0.01) {
+                ctx.lineWidth = 3;
+                let endX = pointerX + (E.x / mag) * Math.min(60, mag * 5);
+                let endY = pointerY + (E.y / mag) * Math.min(60, mag * 5);
+                drawArrow(pointerX, pointerY, endX, endY, '#2c3e50');
+            }
+        }
+
+        // ============================================
+        // 統一輸入處理系統 (支援 Mouse & Touch)
+        // ============================================
+
+        // 取得統一的座標 (相對於 Canvas)
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function handleStart(e) {
+            // 防止手機上的捲動或縮放行為
+            if (e.type === 'touchstart') e.preventDefault();
+
+            isInteracting = true; // 標記正在互動 (顯示探測器)
+            const pos = getEventPos(e);
+            pointerX = pos.x;
+            pointerY = pos.y;
+
+            // 檢查是否點到電荷
+            charges.forEach((c, index) => {
+                let dist = Math.hypot(c.x - pointerX, c.y - pointerY);
+                if (dist < 30) { // 增加一點點觸控容錯範圍 (20 -> 30)
+                    isDragging = true;
+                    dragIndex = index;
+                }
+            });
+        }
+
+        function handleMove(e) {
+            if (e.type === 'touchmove') e.preventDefault();
+
+            const pos = getEventPos(e);
+            pointerX = pos.x;
+            pointerY = pos.y;
+            isInteracting = true;
+
+            if (isDragging && dragIndex !== -1) {
+                charges[dragIndex].x = pointerX;
+                charges[dragIndex].y = pointerY;
+            }
+        }
+
+        function handleEnd(e) {
+            isDragging = false;
+            dragIndex = -1;
+
+            // 如果是觸控結束，將互動標記為 false (隱藏探測器)
+            // 但如果是滑鼠，我們通常希望游標還在畫布上時繼續顯示，所以這裡只針對 touch
+            if (e.type === 'touchend' || e.type === 'touchcancel') {
+                isInteracting = false;
+            }
+        }
+
+        // 處理滑鼠移出畫布
+        function handleMouseLeave() {
+            isInteracting = false;
+            isDragging = false;
+        }
+
+        // 綁定事件監聽器
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('touchstart', handleStart, { passive: false }); // passive: false 允許 preventDefault
+
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('touchmove', handleMove, { passive: false });
+
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchend', handleEnd);
+        canvas.addEventListener('mouseleave', handleMouseLeave);
+
+        // 啟動
+        init();
+
+    </script>
+
+</body>
+
+</html>
