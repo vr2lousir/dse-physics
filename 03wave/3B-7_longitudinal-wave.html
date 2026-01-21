@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Longitudinal Wave Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-chtml.js"></script>
+    <style>
+        canvas {
+            background: #0f172a;
+            border-radius: 0.5rem;
+            width: 100%;
+            height: auto;
+        }
+
+        .slider-blue::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        .checkbox-blue {
+            accent-color: #3b82f6;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 dark:bg-slate-900 p-4 md:p-8 font-sans text-slate-900 dark:text-slate-100">
+
+    <div class="max-w-5xl mx-auto space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl font-bold">縱波分析</h1>
+            <p class="text-slate-500 mt-2">觀察密部、疏部及對應的 s - t 圖</p>
+        </header>
+
+        <!-- Main Simulation View -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Left: Particle View (2/3 width) -->
+            <div class="lg:col-span-2 space-y-4">
+                <div class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg relative">
+                    <h2 class="text-lg font-semibold mb-2 flex justify-between">
+                        1. 觀察其中一粒粒子的運動
+                        <span class="text-sm font-normal text-blue-500">Highlighted particle tracks S-T graph</span>
+                    </h2>
+                    <canvas id="particleCanvas" height="250" width="800"></canvas>
+                </div>
+
+                <!-- Bottom: S-T Graph View -->
+                <div class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg">
+                    <h2 class="text-lg font-semibold mb-2">2. 一粒粒子的 位移 - 時間 圖</h2>
+                    <canvas id="graphCanvas" height="200" width="800"></canvas>
+                </div>
+            </div>
+
+            <!-- Right: Controls & Education -->
+            <div class="space-y-6">
+                <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg space-y-4">
+                    <h3 class="font-bold border-b pb-2">波的參數</h3>
+
+                    <div>
+                        <label class="block text-sm mb-1">頻率 (Hz)</label>
+                        <input type="range" id="freqRange" min="0.1" max="2" step="0.1" value="0.5"
+                            class="w-full h-2 bg-slate-200 rounded-lg appearance-none slider-blue">
+                        <div class="flex justify-between text-xs mt-1"><span id="freqVal">0.5</span><span>Hz</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm mb-1">波幅 (\(A\))</label>
+                        <input type="range" id="ampRange" min="5" max="40" step="1" value="25"
+                            class="w-full h-2 bg-slate-200 rounded-lg appearance-none slider-blue">
+                        <div class="flex justify-between text-xs mt-1"><span id="ampVal">25</span><span>px</span></div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm mb-1">波長 (\(\lambda\))</label>
+                        <input type="range" id="waveRange" min="100" max="400" step="10" value="200"
+                            class="w-full h-2 bg-slate-200 rounded-lg appearance-none slider-blue">
+                        <div class="flex justify-between text-xs mt-1"><span id="waveVal">200</span><span>px</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-2 pt-2">
+                        <input type="checkbox" id="labelToggle" class="checkbox-blue w-4 h-4" checked>
+                        <label for="labelToggle" class="text-sm font-medium">顯示密部和疏部位置</label>
+                    </div>
+
+                    <div class="pt-4 space-y-2">
+                        <div class="flex space-x-2">
+                            <button id="pauseBtn"
+                                class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition">Pause</button>
+                            <button id="stepBtn"
+                                class="hidden flex-1 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-sm rounded-lg font-bold transition">Step
+                                Forward ➔</button>
+                        </div>
+                        <button id="gridBtn"
+                            class="w-full py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-100 dark:hover:bg-slate-700">Toggle
+                            Measurement Grid</button>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-100 dark:border-blue-800 text-sm">
+                    <h3 class="font-bold mb-2">Teaching Tips:</h3>
+                    <ul class="list-disc pl-4 space-y-2 text-slate-600 dark:text-slate-400">
+                        <li><strong>Step Mode:</strong> Use "Pause" then "Step Forward" to show students exactly where
+                            the red particle is at peak compression.</li>
+                        <li><strong>Compression (C):</strong> Points where particles are closest.</li>
+                        <li><strong>Rarefaction (R):</strong> Points where particles are farthest apart.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const pCanvas = document.getElementById('particleCanvas');
+        const pCtx = pCanvas.getContext('2d');
+        const gCanvas = document.getElementById('graphCanvas');
+        const gCtx = gCanvas.getContext('2d');
+
+        // State
+        let time = 0;
+        let isPaused = false;
+        let showGrid = true;
+        let showLabels = true;
+        const history = [];
+        const maxHistory = 400;
+
+        const params = {
+            freq: 0.5,
+            amp: 25,
+            wavelength: 200,
+            numParticles: 80,
+            trackIdx: 30
+        };
+
+        // UI Linkage
+        const freqRange = document.getElementById('freqRange');
+        const ampRange = document.getElementById('ampRange');
+        const waveRange = document.getElementById('waveRange');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const stepBtn = document.getElementById('stepBtn');
+        const gridBtn = document.getElementById('gridBtn');
+        const labelToggle = document.getElementById('labelToggle');
+
+        freqRange.oninput = (e) => { params.freq = parseFloat(e.target.value); document.getElementById('freqVal').innerText = params.freq; };
+        ampRange.oninput = (e) => { params.amp = parseInt(e.target.value); document.getElementById('ampVal').innerText = params.amp; };
+        waveRange.oninput = (e) => { params.wavelength = parseInt(e.target.value); document.getElementById('waveVal').innerText = params.wavelength; };
+
+        pauseBtn.onclick = () => {
+            isPaused = !isPaused;
+            pauseBtn.innerText = isPaused ? 'Resume' : 'Pause';
+            stepBtn.classList.toggle('hidden', !isPaused);
+        };
+
+        stepBtn.onclick = () => {
+            if (isPaused) {
+                time += 0.05;
+                updateHistoryOnly();
+            }
+        };
+
+        gridBtn.onclick = () => { showGrid = !showGrid; };
+        labelToggle.onchange = (e) => { showLabels = e.target.checked; };
+
+        function drawGrid(ctx, w, h) {
+            if (!showGrid) return;
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1;
+            const step = 25;
+            for (let x = 0; x < w; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+            for (let y = 0; y < h; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+        }
+
+        function updateHistoryOnly() {
+            const equilibriumX = params.trackIdx * (pCanvas.width / params.numParticles);
+            const k = (2 * Math.PI) / params.wavelength;
+            const omega = 2 * Math.PI * params.freq;
+            const displacement = params.amp * Math.sin(k * equilibriumX - omega * time);
+            history.push(displacement);
+            if (history.length > maxHistory) history.shift();
+        }
+
+        function animate() {
+            if (!isPaused) {
+                time += 0.02;
+                updateHistoryOnly();
+            }
+
+            // --- PARTICLE VIEW ---
+            pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+            drawGrid(pCtx, pCanvas.width, pCanvas.height);
+
+            const centerY = pCanvas.height / 2;
+            const spacing = pCanvas.width / params.numParticles;
+            const k = (2 * Math.PI) / params.wavelength;
+            const omega = 2 * Math.PI * params.freq;
+
+            for (let i = 0; i < params.numParticles; i++) {
+                const equilibriumX = i * spacing;
+                const phase = k * equilibriumX - omega * time;
+                const displacement = params.amp * Math.sin(phase);
+                const currentX = equilibriumX + displacement;
+
+                if (i === params.trackIdx) {
+                    pCtx.fillStyle = '#f87171';
+                    pCtx.beginPath();
+                    pCtx.arc(currentX, centerY, 6, 0, Math.PI * 2);
+                    pCtx.fill();
+
+                    pCtx.strokeStyle = 'rgba(248, 113, 113, 0.4)';
+                    pCtx.setLineDash([5, 5]);
+                    pCtx.beginPath();
+                    pCtx.moveTo(equilibriumX, centerY - 60);
+                    pCtx.lineTo(equilibriumX, centerY + 60);
+                    pCtx.stroke();
+                    pCtx.setLineDash([]);
+                } else {
+                    pCtx.fillStyle = 'rgba(255,255,255,0.6)';
+                    pCtx.beginPath();
+                    pCtx.arc(currentX, centerY, 3, 0, Math.PI * 2);
+                    pCtx.fill();
+                }
+            }
+
+            // --- COMPRESSION / RAREFACTION LABELS ---
+            if (showLabels) {
+                pCtx.font = 'bold 14px Inter, sans-serif';
+                pCtx.textAlign = 'center';
+
+                // Calculate the phase shift in pixels (v * t)
+                const startX = (omega * time) / k;
+
+                // Iterate through wavelengths to place labels
+                for (let x = -params.wavelength; x < pCanvas.width + params.wavelength; x += params.wavelength) {
+
+                    // FIXED MATH:
+                    // Compression is at Phase PI (0.5 wavelength offset)
+                    // Rarefaction is at Phase 0 or 2PI (0.0 or 1.0 wavelength offset)
+
+                    // Use modulo to wrap around screen, ensure positive result
+                    let cPos = (startX + x + params.wavelength * 0.5) % pCanvas.width;
+                    let rPos = (startX + x) % pCanvas.width;
+
+                    // Handle negative modulo results if they occur
+                    if (cPos < 0) cPos += pCanvas.width;
+                    if (rPos < 0) rPos += pCanvas.width;
+
+                    // Draw Compression (Red)
+                    if (cPos > 0 && cPos < pCanvas.width) {
+                        pCtx.fillStyle = '#f87171';
+                        pCtx.fillText('C', cPos, centerY - 40);
+                    }
+
+                    // Draw Rarefaction (Blue)
+                    if (rPos > 0 && rPos < pCanvas.width) {
+                        pCtx.fillStyle = '#60a5fa';
+                        pCtx.fillText('R', rPos, centerY - 40);
+                    }
+                }
+            }
+
+            // --- GRAPH VIEW ---
+            gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+            drawGrid(gCtx, gCanvas.width, gCanvas.height);
+
+            const graphCenterY = gCanvas.height / 2;
+            gCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+            gCtx.beginPath();
+            gCtx.moveTo(0, graphCenterY);
+            gCtx.lineTo(gCanvas.width, graphCenterY);
+            gCtx.stroke();
+
+            if (history.length > 1) {
+                gCtx.strokeStyle = '#f87171';
+                gCtx.lineWidth = 2;
+                gCtx.beginPath();
+                for (let i = 0; i < history.length; i++) {
+                    const xPos = gCanvas.width - (history.length - i) * 2;
+                    const yPos = graphCenterY - history[i];
+                    if (i === 0) gCtx.moveTo(xPos, yPos);
+                    else gCtx.lineTo(xPos, yPos);
+                }
+                gCtx.stroke();
+
+                const lastIdx = history.length - 1;
+                gCtx.fillStyle = '#f87171';
+                gCtx.beginPath();
+                gCtx.arc(gCanvas.width, graphCenterY - history[lastIdx], 4, 0, Math.PI * 2);
+                gCtx.fill();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>
