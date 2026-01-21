@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>HKDSE 物理模擬：雙層巴士傾斜測試 (HK Edition)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            touch-action: none;
+        }
+
+        h2 { color: #333; margin: 10px 0; font-size: 1.1rem; text-align: center;}
+
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+            background: #87CEEB;
+            border-radius: 8px;
+            overflow: hidden;
+            width: 95%;
+            max-width: 600px;
+        }
+
+        canvas { display: block; width: 100%; }
+
+        #controls {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            width: 95%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-sizing: border-box;
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 8px;
+        }
+
+        .slider-wrapper {
+            flex: 1;
+            margin: 0 10px;
+            position: relative;
+        }
+
+        input[type=range] {
+            width: 100%;
+            height: 6px;
+            background: #ddd;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        /* 標記 28度 */
+        .mark-28 {
+            position: absolute;
+            left: 56%; /* 28/50 approx */
+            top: 10px;
+            font-size: 0.7rem;
+            color: #d63384;
+            font-weight: bold;
+            pointer-events: none;
+        }
+        .mark-28::before {
+            content: '▲';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.6rem;
+        }
+
+        label {
+            font-weight: bold;
+            font-size: 0.85rem;
+            color: #444;
+            min-width: 80px;
+        }
+
+        .val-display {
+            width: 50px; 
+            text-align: right; 
+            font-family: monospace;
+            font-size: 1rem;
+            color: #007bff;
+        }
+
+        .status-panel {
+            display: flex;
+            justify-content: space-around;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            border: 1px solid #e9ecef;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .status-val {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-top: 2px;
+        }
+
+        .danger { color: #dc3545; }
+        .safe { color: #28a745; }
+        .warning { color: #fd7e14; }
+
+    </style>
+</head>
+<body>
+
+    <h2>HKDSE 模擬：重心與翻倒 (HK 38°參數版)</h2>
+
+    <div id="canvas-container">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div id="controls">
+        <div class="control-row">
+            <label>傾斜角 $\theta$</label>
+            <div class="slider-wrapper">
+                <input type="range" id="tiltSlider" min="0" max="50" step="0.1" value="0">
+                <div class="mark-28" style="left: 56%;">28° (法定)</div>
+            </div>
+            <span id="tiltDisplay" class="val-display">0.0°</span>
+        </div>
+
+        <div class="control-row">
+            <label>上層人數</label>
+            <div class="slider-wrapper">
+                <input type="range" id="upperMassSlider" min="0" max="60" step="1" value="55">
+            </div>
+            <span id="upperMassDisplay" class="val-display">55</span>
+        </div>
+
+        <div class="control-row">
+            <label>下層人數</label>
+            <div class="slider-wrapper">
+                <input type="range" id="lowerMassSlider" min="0" max="40" step="1" value="0">
+            </div>
+            <span id="lowerMassDisplay" class="val-display">0</span>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-item">
+                <span style="color:#666">重心高度 (CG)</span>
+                <span id="cgHeightDisplay" class="status-val" style="color:#333;">1.65 m</span>
+            </div>
+            <div class="status-item">
+                <span style="color:#666">翻倒臨界角</span>
+                <span id="criticalAngleDisplay" class="status-val safe">38.2°</span>
+            </div>
+            <div class="status-item">
+                <span style="color:#666">狀態</span>
+                <span id="stabilityStatus" class="status-val safe">穩定</span>
+            </div>
+        </div>
+
+        <div style="font-size: 0.8rem; color: #666; line-height: 1.4;">
+            <strong>物理觀察：</strong>
+            <br>1. 增加下層乘客會<strong>降低</strong>重心 (CG 數值變小)。
+            <br>2. 上層滿載 (55人) 時，翻倒極限約為 <strong>38°</strong>。
+            <br>3. 紅線為 HK 法定測試標準 (28°)。《道路交通(車輛構造及保養)規例》(第374章第55條)
+            <br>4. 57公斤當作為代表一個人的重量
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+
+        // UI
+        const tiltSlider = document.getElementById('tiltSlider');
+        const upperMassSlider = document.getElementById('upperMassSlider');
+        const lowerMassSlider = document.getElementById('lowerMassSlider');
+        
+        const tiltDisplay = document.getElementById('tiltDisplay');
+        const upperMassDisplay = document.getElementById('upperMassDisplay');
+        const lowerMassDisplay = document.getElementById('lowerMassDisplay');
+        const cgHeightDisplay = document.getElementById('cgHeightDisplay');
+        const criticalAngleDisplay = document.getElementById('criticalAngleDisplay');
+        const stabilityStatus = document.getElementById('stabilityStatus');
+
+        // State
+        let width, height;
+        // 為了讓滿載時達到 ~38度，我們需要調校巴士寬度與高度的比例
+        // tan(38) = 0.78
+        // half_width / h_cg = 0.78  => h_cg = 1.25 / 0.78 = 1.6m (approx)
+        
+        const BUS_WIDTH_M = 2.5; 
+        const PIXELS_PER_METER = 50; 
+        
+        // Calibrated Constants for "Enviro-like" bus
+        const CONSTANTS = {
+            busMass: 14000,      // kg (Empty weight, heavy chassis)
+            busBaseCG: 1.15,     // m (Engine/Chassis is low, body adds height)
+            personMass: 68,      // kg
+            upperDeckCG: 3.7,    // m (Height of upper passengers)
+            lowerDeckCG: 0.75,   // m (Sitting/Standing low - BELOW busBaseCG)
+            busHeightVis: 4.4    // m (Visual height only)
+        };
+
+        let state = {
+            tilt: 0,
+            passengersUpper: 55,
+            passengersLower: 0,
+            cgY: 0, 
+            isToppled: false
+        };
+
+        function resize() {
+            width = container.clientWidth;
+            height = Math.min(window.innerHeight * 0.5, 380);
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        function calculatePhysics() {
+            const mBus = CONSTANTS.busMass;
+            const mUpper = state.passengersUpper * CONSTANTS.personMass;
+            const mLower = state.passengersLower * CONSTANTS.personMass;
+            
+            const totalMass = mBus + mUpper + mLower;
+            
+            // Moment = Mass * Height
+            const momentBus = mBus * CONSTANTS.busBaseCG;
+            const momentUpper = mUpper * CONSTANTS.upperDeckCG;
+            const momentLower = mLower * CONSTANTS.lowerDeckCG;
+            
+            state.cgY = (momentBus + momentUpper + momentLower) / totalMass;
+
+            // Critical Angle Calculation
+            // tan(theta) = (width / 2) / cg_height
+            const halfWidth = BUS_WIDTH_M / 2;
+            const criticalRad = Math.atan(halfWidth / state.cgY);
+            const criticalDeg = criticalRad * (180 / Math.PI);
+            
+            return criticalDeg;
+        }
+
+        function updateUI(criticalDeg) {
+            tiltDisplay.innerText = state.tilt.toFixed(1) + "°";
+            upperMassDisplay.innerText = state.passengersUpper;
+            lowerMassDisplay.innerText = state.passengersLower;
+            cgHeightDisplay.innerText = state.cgY.toFixed(3) + " m";
+            criticalAngleDisplay.innerText = criticalDeg.toFixed(1) + "°";
+
+            if (state.tilt > criticalDeg) {
+                state.isToppled = true;
+                stabilityStatus.innerText = "⚠️ 翻倒 !";
+                stabilityStatus.className = "status-val danger";
+            } else {
+                state.isToppled = false;
+                stabilityStatus.innerText = "穩定";
+                stabilityStatus.className = "status-val safe";
+                
+                // 接近臨界點警告
+                if(criticalDeg - state.tilt < 3) {
+                    stabilityStatus.innerText = "危險邊緣";
+                    stabilityStatus.className = "status-val warning";
+                }
+            }
+        }
+
+        function drawScene() {
+            ctx.clearRect(0,0,width,height);
+            
+            const groundY = height * 0.85;
+            const centerX = width / 2;
+            const angleRad = state.tilt * (Math.PI / 180);
+
+            ctx.save();
+            ctx.translate(centerX, groundY);
+            ctx.rotate(angleRad); // Rotate world
+
+            // 1. Draw Road
+            ctx.fillStyle = "#555";
+            ctx.fillRect(-width, 0, width*2, 20);
+            ctx.fillStyle = "#fff"; 
+            for(let i=-300; i<300; i+=60) ctx.fillRect(i, 5, 30, 4);
+
+            // 2. Bus Config
+            const busW = BUS_WIDTH_M * PIXELS_PER_METER;
+            const busH = CONSTANTS.busHeightVis * PIXELS_PER_METER;
+            
+            // Move drawing cursor to bus bottom-center
+            // Note: In rotated context, (0,0) is pivot point on ground? No, (0,0) is center of road.
+            // Let's assume bus is centered on road.
+            // Pivot check: when toppling, we usually pivot around the wheel.
+            // For visual simplicity in static tilt, rotating the whole bus around road center is fine.
+            
+            ctx.translate(0, -busH); // Move up so bottom is at 0
+
+            // Draw Bus Body
+            ctx.fillStyle = state.isToppled ? "#ffcccc" : "#f0c420"; // KMB Gold color
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 2;
+            
+            // Main Chassis
+            ctx.beginPath();
+            ctx.roundRect(-busW/2, 0, busW, busH, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            // Windows
+            ctx.fillStyle = "rgba(200, 230, 255, 0.8)";
+            // Upper
+            ctx.fillRect(-busW/2 + 5, 20, busW-10, busH*0.4);
+            // Lower
+            ctx.fillRect(-busW/2 + 5, busH*0.55, busW-10, busH*0.35);
+
+            // Passengers (Dots)
+            ctx.fillStyle = "#333";
+            
+            // Upper Passengers (High density)
+            const maxCols = 5;
+            for(let i=0; i<state.passengersUpper; i++) {
+                const row = Math.floor(i / maxCols);
+                const col = i % maxCols;
+                const px = -busW/2 + 15 + col * (busW/maxCols);
+                const py = 30 + row * 12; // High up
+                if(py < busH*0.4 + 20) { // Clip
+                    ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI*2); ctx.fill();
+                }
+            }
+
+            // Lower Passengers
+            for(let i=0; i<state.passengersLower; i++) {
+                const row = Math.floor(i / maxCols);
+                const col = i % maxCols;
+                const px = -busW/2 + 15 + col * (busW/maxCols);
+                const py = busH*0.6 + row * 12; // Low down
+                if(py < busH - 10) {
+                    ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI*2); ctx.fill();
+                }
+            }
+
+            // Wheels
+            ctx.fillStyle = "#222";
+            ctx.beginPath(); ctx.arc(-busW/2 + 10, busH, 14, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(busW/2 - 10, busH, 14, 0, Math.PI*2); ctx.fill(); // Pivot wheel
+
+            // CG Marker
+            const cgPixelY = busH - (state.cgY * PIXELS_PER_METER);
+            
+            // Line of Action (Gravity)
+            ctx.save();
+            ctx.translate(0, cgPixelY); // Go to CG
+            ctx.rotate(-angleRad); // Rotate back to true vertical
+            
+            ctx.beginPath();
+            ctx.strokeStyle = state.isToppled ? "#dc3545" : "#0d6efd";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, 400); // Downward line
+            ctx.stroke();
+            
+            // Weight Label
+            ctx.fillStyle = state.isToppled ? "#dc3545" : "#0d6efd";
+            ctx.font = "bold 12px Arial";
+            ctx.fillText("W", 5, 60);
+
+            ctx.restore();
+
+            // Draw CG Dot
+            ctx.fillStyle = "red";
+            ctx.beginPath(); ctx.arc(0, cgPixelY, 6, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "white"; ctx.font="10px Arial"; ctx.fillText("CG", -6, cgPixelY+3);
+
+            // Visual Pivot Highlight (Right Wheel)
+            const pivotX = busW/2 - 10;
+            const pivotY = busH;
+            
+            // Check line crossing logic visually
+            // In rotated frame, pivot is at (pivotX, pivotY)
+            // Gravity line is vertical in WORLD frame.
+            // Project pivot to World X and CG to World X to compare?
+            // Easier: The critical angle calc already did the math. Just highlight pivot.
+            
+            if(state.isToppled) {
+                ctx.beginPath();
+                ctx.arc(pivotX, pivotY, 20, 0, Math.PI*2);
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function loop() {
+            // Inputs
+            state.tilt = parseFloat(tiltSlider.value);
+            state.passengersUpper = parseInt(upperMassSlider.value);
+            state.passengersLower = parseInt(lowerMassSlider.value);
+
+            const criticalDeg = calculatePhysics();
+            updateUI(criticalDeg);
+            drawScene();
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        loop();
+
+    </script>
+</body>
+</html>
