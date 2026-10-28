@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2D Water Ripple Tank & Interference Physics Simulator</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      user-select: none;
+    }
+    .font-mono {
+      font-family: 'Fira Code', monospace;
+    }
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    /* Custom Slider Styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: transparent;
+    }
+    input[type=range]:focus {
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 6px;
+      cursor: pointer;
+      background: #1e293b;
+      border-radius: 3px;
+      border: 1px solid #334155;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      height: 16px;
+      width: 16px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      -webkit-appearance: none;
+      margin-top: -5px;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+      transition: transform 0.1s ease, background-color 0.1s ease;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: #7dd3fc;
+    }
+    /* Canvas Overlay Glow */
+    .canvas-glow {
+      box-shadow: 0 0 25px -5px rgba(14, 165, 233, 0.15);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col overflow-x-hidden">
+
+  <!-- Header & Navigation -->
+  <header class="bg-slate-900/80 border-b border-slate-800 backdrop-blur sticky top-0 z-40 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+            Water Ripple Tank Simulator
+            <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono font-normal">Wave Physics Lab</span>
+          </h1>
+          <p class="text-xs text-slate-400">Two-Source Wave Propagation, Interference & Hyperbolic Nodal Analysis</p>
+        </div>
+      </div>
+
+      <!-- Mode Switcher Tabs -->
+      <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+        <button id="btn-mode-schematic" class="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all bg-slate-800 text-cyan-400 shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke-width="2" stroke-dasharray="2 2"></circle>
+            <circle cx="12" cy="12" r="4" stroke-width="2"></circle>
+          </svg>
+          Schematic Wavefronts
+        </button>
+        <button id="btn-mode-simulation" class="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-400 hover:text-slate-200">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+          </svg>
+          Real Interference Field
+        </button>
+      </div>
+
+      <!-- Presets Dropdown -->
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-slate-400 font-medium hidden sm:inline">Presets:</label>
+        <select id="preset-select" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+          <option value="identical">Standard In-Phase (λ1 = λ2)</option>
+          <option value="beats">Beat Wave Fringes (λ1 ≠ λ2)</option>
+          <option value="out-phase">Out-of-Phase (180° Shift)</option>
+          <option value="youngs">Young's Slit Analogy (Small d)</option>
+          <option value="single">Single Source Propagation</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Body -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-5">
+    
+    <!-- Left Column: Ripple Tank Canvas & Mode Indicators -->
+    <section class="lg:col-span-7 flex flex-col space-y-4">
+      
+      <!-- Tank Display Container -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center relative canvas-glow">
+        
+        <!-- Canvas Status Badge Bar -->
+        <div class="w-full flex items-center justify-between mb-3 text-xs">
+          <div class="flex items-center gap-2">
+            <span id="mode-badge" class="px-2.5 py-1 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-800 font-medium flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              Mode 1: Schematic Diagram (Wavefronts)
+            </span>
+            <span class="text-slate-400 font-mono hidden sm:inline">40cm × 40cm Tank</span>
+          </div>
+
+          <!-- Probe Location Readout Badge -->
+          <div class="flex items-center gap-2 bg-slate-950/80 px-2.5 py-1 rounded-md border border-slate-800 font-mono text-slate-300">
+            <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Probe: <span id="probe-coords" class="text-amber-300">(0.0, 5.0) cm</span>
+          </div>
+        </div>
+
+        <!-- Main Canvas Box -->
+        <div class="relative w-full aspect-square max-w-[520px] rounded-xl overflow-hidden border border-slate-700/80 shadow-2xl bg-black cursor-crosshair group">
+          <canvas id="tank-canvas" width="500" height="500" class="w-full h-full block"></canvas>
+          
+          <!-- Interactive Drag Helper Hint -->
+          <div class="absolute bottom-2 left-2 px-2.5 py-1 bg-slate-900/80 backdrop-blur rounded text-[11px] text-slate-400 border border-slate-800 pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity">
+            💡 Click or Drag mouse to position the signal probe
+          </div>
+        </div>
+
+        <!-- Legend Bar for Schematic Mode -->
+        <div id="schematic-legend" class="w-full mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-medium text-slate-300 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-0.5 bg-cyan-400"></span>
+            <span>S1 Crest (Peak)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-0.5 border-b border-dashed border-cyan-400"></span>
+            <span>S1 Trough</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-0.5 bg-fuchsia-500"></span>
+            <span>S2 Crest (Peak)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-0.5 border-b border-dashed border-fuchsia-500"></span>
+            <span>S2 Trough</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Time Simulation Controls Bar -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <!-- Play / Pause -->
+          <button id="btn-play-pause" class="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-semibold text-xs rounded-xl shadow-lg shadow-cyan-600/20 transition-all">
+            <svg id="icon-play-pause" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+            <span id="text-play-pause">Pause</span>
+          </button>
+          
+          <!-- Step Forward -->
+          <button id="btn-step" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition-all">
+            Step ⏭
+          </button>
+
+          <!-- Reset Time -->
+          <button id="btn-reset" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition-all">
+            Reset ↺
+          </button>
+        </div>
+
+        <!-- Simulation Speed Multiplier -->
+        <div class="flex items-center gap-3">
+          <label class="text-xs text-slate-400 font-medium">Speed:</label>
+          <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-mono">
+            <button class="btn-speed px-2 py-0.5 rounded text-slate-400 hover:text-white" data-speed="0.25">0.25x</button>
+            <button class="btn-speed px-2 py-0.5 rounded text-slate-400 hover:text-white" data-speed="0.5">0.5x</button>
+            <button class="btn-speed px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 font-semibold" data-speed="1.0">1.0x</button>
+            <button class="btn-speed px-2 py-0.5 rounded text-slate-400 hover:text-white" data-speed="2.0">2.0x</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right Column: Oscilloscope, Metrics & Interactive Controls -->
+    <section class="lg:col-span-5 flex flex-col space-y-4">
+      
+      <!-- Real-Time Probe Oscilloscope & Physical Metrics -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            Probe Real-Time Displacement Oscilloscope
+          </h2>
+          <span id="interference-status-badge" class="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+            Constructive
+          </span>
+        </div>
+
+        <!-- Oscilloscope Graph Canvas -->
+        <div class="w-full h-36 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden relative">
+          <canvas id="scope-canvas" width="400" height="150" class="w-full h-full block"></canvas>
+          <div class="absolute top-1.5 left-2 flex gap-3 text-[10px] font-mono">
+            <span class="text-cyan-400">― S1 (z₁)</span>
+            <span class="text-fuchsia-400">― S2 (z₂)</span>
+            <span class="text-amber-300 font-bold">― Total (z)</span>
+          </div>
+        </div>
+
+        <!-- Wave Analytics Matrix Readouts -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+          <div class="bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400">Dist S1 (r₁)</div>
+            <div id="readout-r1" class="text-cyan-400 font-bold mt-0.5">14.1 cm</div>
+          </div>
+          <div class="bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400">Dist S2 (r₂)</div>
+            <div id="readout-r2" class="text-fuchsia-400 font-bold mt-0.5">14.1 cm</div>
+          </div>
+          <div class="bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400">Path Diff Δr</div>
+            <div id="readout-dr" class="text-amber-300 font-bold mt-0.5">0.0 cm</div>
+          </div>
+          <div class="bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400">Height z(t)</div>
+            <div id="readout-z" class="text-white font-bold mt-0.5">+1.84</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Parameter Sliders Box -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col space-y-4">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+          </svg>
+          Wave Parameter Controls
+        </h2>
+
+        <div class="space-y-3.5">
+          <!-- Wave Speed (v) -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300 font-medium">Wave Speed (v)</span>
+              <span id="val-speed" class="font-mono text-cyan-400 font-semibold">12.0 cm/s</span>
+            </div>
+            <input id="slider-speed" type="range" min="4" max="25" step="0.5" value="12" class="w-full" />
+          </div>
+
+          <!-- Source Separation (d) -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300 font-medium">Source Separation (d)</span>
+              <span id="val-sep" class="font-mono text-cyan-400 font-semibold">12.0 cm</span>
+            </div>
+            <input id="slider-sep" type="range" min="2" max="28" step="0.5" value="12" class="w-full" />
+          </div>
+
+          <!-- Wavelength S1 (λ1) -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300 font-medium flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                Wavelength Source 1 (λ₁)
+              </span>
+              <span id="val-lambda1" class="font-mono text-cyan-400 font-semibold">4.0 cm</span>
+            </div>
+            <input id="slider-lambda1" type="range" min="1.5" max="10.0" step="0.1" value="4.0" class="w-full" />
+          </div>
+
+          <!-- Wavelength S2 (λ2) -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300 font-medium flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fuchsia-400"></span>
+                Wavelength Source 2 (λ₂)
+              </span>
+              <span id="val-lambda2" class="font-mono text-fuchsia-400 font-semibold">4.0 cm</span>
+            </div>
+            <input id="slider-lambda2" type="range" min="1.5" max="10.0" step="0.1" value="4.0" class="w-full" />
+          </div>
+
+          <!-- Phase Offset S2 (Δφ) -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300 font-medium">Source 2 Phase Shift (Δφ)</span>
+              <span id="val-phase" class="font-mono text-slate-300 font-semibold">0° (In-Phase)</span>
+            </div>
+            <input id="slider-phase" type="range" min="0" max="360" step="15" value="0" class="w-full" />
+          </div>
+        </div>
+
+        <!-- Quick Sync Buttons -->
+        <div class="flex items-center justify-between pt-1">
+          <button id="btn-sync-lambda" class="text-xs text-cyan-400 hover:text-cyan-300 underline font-medium flex items-center gap-1">
+            🔗 Sync Wavelengths (λ₁ = λ₂)
+          </button>
+          <button id="btn-zero-phase" class="text-xs text-slate-400 hover:text-slate-300 underline font-medium">
+            Reset Phase (0°)
+          </button>
+        </div>
+      </div>
+
+      <!-- Toggles & Color Palette Options -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col space-y-3.5">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+          </svg>
+          Simulation Switches & Theme
+        </h2>
+
+        <!-- Toggles Grid -->
+        <div class="grid grid-cols-2 gap-3">
+          <!-- Source 1 Active Toggle -->
+          <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
+            <span class="text-xs font-semibold text-cyan-400 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Source 1
+            </span>
+            <input type="checkbox" id="toggle-s1" checked class="sr-only peer" />
+            <div class="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-cyan-500 relative"></div>
+          </label>
+
+          <!-- Source 2 Active Toggle -->
+          <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
+            <span class="text-xs font-semibold text-fuchsia-400 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-fuchsia-400"></span> Source 2
+            </span>
+            <input type="checkbox" id="toggle-s2" checked class="sr-only peer" />
+            <div class="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-fuchsia-500 relative"></div>
+          </label>
+
+          <!-- Source Position Switcher (Center vs Lower Edge) -->
+          <div class="col-span-2 flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+            <div class="flex flex-col">
+              <span class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                </svg>
+                Source Y-Position in Tank
+              </span>
+              <span class="text-[10px] text-slate-400">Position sources at Y-Center or Lower Edge</span>
+            </div>
+            <div class="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-mono">
+              <button id="btn-pos-center" class="px-2.5 py-1 rounded bg-cyan-950 text-cyan-400 font-semibold transition-all">Center</button>
+              <button id="btn-pos-bottom" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition-all">Lower Edge</button>
+            </div>
+          </div>
+
+          <!-- Node/Antinode Lines Overlay Toggle -->
+          <label class="col-span-2 flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
+            <div class="flex flex-col">
+              <span class="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+                </svg>
+                Node & Antinode Hyperbola Lines
+              </span>
+              <span class="text-[10px] text-slate-400">Overlays constructive (|Δr|=mλ) & destructive lines</span>
+            </div>
+            <input type="checkbox" id="toggle-nodes" checked class="sr-only peer" />
+            <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 relative"></div>
+          </label>
+        </div>
+
+        <!-- Color Palette Theme Selector -->
+        <div class="pt-1">
+          <label class="text-xs text-slate-400 font-medium mb-1.5 block">Color Palette (Mode 2 Real Simulation):</label>
+          <div class="grid grid-cols-4 gap-1.5 text-xs font-medium">
+            <button class="btn-theme p-2 rounded-lg border border-cyan-500/80 bg-slate-950 text-cyan-300 text-center" data-theme="water">
+              🌊 Water
+            </button>
+            <button class="btn-theme p-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:text-white text-center" data-theme="mono">
+              ☯ Mono
+            </button>
+            <button class="btn-theme p-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:text-white text-center" data-theme="thermal">
+              🔥 Thermal
+            </button>
+            <button class="btn-theme p-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:text-white text-center" data-theme="neon">
+              ⚡ Neon
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Physics Formula & Theory Footer -->
+  <footer class="bg-slate-900 border-t border-slate-800 px-4 py-3 mt-auto text-xs text-slate-400">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-4">
+        <span><strong>Antinodal Line (Constructive):</strong> |r₁ - r₂| = m·λ</span>
+        <span><strong>Nodal Line (Destructive):</strong> |r₁ - r₂| = (m + ½)·λ</span>
+      </div>
+      <div class="font-mono text-slate-500">
+        Superposition: z(x,y,t) = z₁(r₁,t) + z₂(r₂,t)
+      </div>
+    </div>
+  </footer>
+
+  <!-- JavaScript Simulation Core -->
+  <script>
+    /**
+     * 2D Water Ripple Tank Physics Engine & Interference Simulator
+     */
+    (function() {
+      // Configuration & Physics State
+      const state = {
+        mode: 'schematic', // 'schematic' (Mode 1) or 'simulation' (Mode 2)
+        v: 12.0,           // Wave propagation speed (cm/s)
+        d: 12.0,           // Source separation distance (cm)
+        lambda1: 4.0,      // Wavelength Source 1 (cm)
+        lambda2: 4.0,      // Wavelength Source 2 (cm)
+        phase2: 0.0,       // Phase shift of Source 2 (radians)
+        sourceYPos: 'center', // 'center' or 'bottom'
+        s1Active: true,    // S1 toggle
+        s2Active: true,    // S2 toggle
+        showNodes: true,   // Show Nodal/Antinodal lines overlay
+        theme: 'water',    // 'water', 'mono', 'thermal', 'neon'
+        
+        // Time controls
+        isPlaying: true,
+        simTime: 0.0,      // Total elapsed simulation time (seconds)
+        timeSpeed: 1.0,    // Speed multiplier
+
+        // Tank physical dimensions
+        tankWidth: 40.0,   // Physical width in cm (-20 to +20)
+        tankHeight: 40.0,  // Physical height in cm (-20 to +20)
+
+        // Probe state (in physical cm coordinates)
+        probeX: 0.0,
+        probeY: 5.0,
+        isDraggingProbe: false
+      };
+
+      // Scope History Buffer
+      const scopeHistory = [];
+      const MAX_SCOPE_SAMPLES = 250;
+
+      // DOM Elements Initialization
+      const tankCanvas = document.getElementById('tank-canvas');
+      const tankCtx = tankCanvas.getContext('2d');
+
+      const scopeCanvas = document.getElementById('scope-canvas');
+      const scopeCtx = scopeCanvas.getContext('2d');
+
+      // Controls DOM
+      const sliderSpeed = document.getElementById('slider-speed');
+      const valSpeed = document.getElementById('val-speed');
+      const sliderSep = document.getElementById('slider-sep');
+      const valSep = document.getElementById('val-sep');
+      const sliderLambda1 = document.getElementById('slider-lambda1');
+      const valLambda1 = document.getElementById('val-lambda1');
+      const sliderLambda2 = document.getElementById('slider-lambda2');
+      const valLambda2 = document.getElementById('val-lambda2');
+      const sliderPhase = document.getElementById('slider-phase');
+      const valPhase = document.getElementById('val-phase');
+
+      const btnModeSchematic = document.getElementById('btn-mode-schematic');
+      const btnModeSimulation = document.getElementById('btn-mode-simulation');
+      const modeBadge = document.getElementById('mode-badge');
+      const schematicLegend = document.getElementById('schematic-legend');
+
+      const toggleS1 = document.getElementById('toggle-s1');
+      const toggleS2 = document.getElementById('toggle-s2');
+      const toggleNodes = document.getElementById('toggle-nodes');
+
+      const btnPlayPause = document.getElementById('btn-play-pause');
+      const iconPlayPause = document.getElementById('icon-play-pause');
+      const textPlayPause = document.getElementById('text-play-pause');
+      const btnStep = document.getElementById('btn-step');
+      const btnReset = document.getElementById('btn-reset');
+      const btnSyncLambda = document.getElementById('btn-sync-lambda');
+      const btnZeroPhase = document.getElementById('btn-zero-phase');
+      const presetSelect = document.getElementById('preset-select');
+
+      // Readouts DOM
+      const probeCoordsReadout = document.getElementById('probe-coords');
+      const readoutR1 = document.getElementById('readout-r1');
+      const readoutR2 = document.getElementById('readout-r2');
+      const readoutDr = document.getElementById('readout-dr');
+      const readoutZ = document.getElementById('readout-z');
+      const interferenceBadge = document.getElementById('interference-status-badge');
+
+      // Simulation Canvas Internal Resolution (For Mode 2 Fast Pixel Render)
+      const SIM_RES = 300; // 300x300 pixel buffer
+      const simCanvas = document.createElement('canvas');
+      simCanvas.width = SIM_RES;
+      simCanvas.height = SIM_RES;
+      const simCtx = simCanvas.getContext('2d');
+      let simImgData = simCtx.createImageData(SIM_RES, SIM_RES);
+      let simPixels = new Uint32Array(simImgData.data.buffer);
+
+      // Pre-computed Palette Lookup Table (256 entries)
+      let paletteLUT = new Uint32Array(256);
+
+      /**
+       * Palette LUT Builder for Fast Rendering
+       */
+      function updatePaletteLUT() {
+        for (let i = 0; i < 256; i++) {
+          const t = i / 255;
+          let r = 0, g = 0, b = 0;
+
+          if (state.theme === 'water') {
+            // Dark Navy (5, 15, 35) -> Deep Blue (0, 70, 140) -> Cyan (0, 220, 245) -> Crest White
+            if (t < 0.5) {
+              let k = t / 0.5;
+              r = Math.floor(4 * (1-k) + 0 * k);
+              g = Math.floor(12 * (1-k) + 120 * k);
+              b = Math.floor(32 * (1-k) + 210 * k);
+            } else {
+              let k = (t - 0.5) / 0.5;
+              r = Math.floor(0 * (1-k) + 255 * k);
+              g = Math.floor(120 * (1-k) + 255 * k);
+              b = Math.floor(210 * (1-k) + 255 * k);
+            }
+          } else if (state.theme === 'mono') {
+            r = g = b = Math.floor(t * 255);
+          } else if (state.theme === 'thermal') {
+            if (t < 0.25) {
+              let k = t / 0.25;
+              r = Math.floor(15 + 25*k); g = Math.floor(0 + 10*k); b = Math.floor(35 + 175*k);
+            } else if (t < 0.5) {
+              let k = (t - 0.25) / 0.25;
+              r = Math.floor(40 + 200*k); g = Math.floor(10 + 20*k); b = Math.floor(210 * (1-k));
+            } else if (t < 0.75) {
+              let k = (t - 0.5) / 0.25;
+              r = 240; g = Math.floor(30 + 210*k); b = 0;
+            } else {
+              let k = (t - 0.75) / 0.25;
+              r = 255; g = 255; b = Math.floor(255 * k);
+            }
+          } else if (state.theme === 'neon') {
+            if (t < 0.5) {
+              let k = 1 - (t / 0.5); // Troughs are Hot Magenta
+              r = Math.floor(10 + 245 * k);
+              g = Math.floor(10 + 10 * k);
+              b = Math.floor(25 + 180 * k);
+            } else {
+              let k = (t - 0.5) / 0.5; // Crests are Bright Neon Cyan
+              r = Math.floor(10 + 10 * k);
+              g = Math.floor(25 + 245 * k);
+              b = Math.floor(30 + 225 * k);
+            }
+          }
+
+          // Format: 0xAABBGGRR (Little Endian for Uint32 ImageData)
+          paletteLUT[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+        }
+      }
+
+      // Initial Palette build
+      updatePaletteLUT();
+
+      /**
+       * Convert Canvas Pixel Coordinates to Tank Physical Coordinates (cm)
+       */
+      function canvasToPhysical(cx, cy) {
+        const w = tankCanvas.width;
+        const h = tankCanvas.height;
+        const x = ((cx / w) - 0.5) * state.tankWidth;
+        const y = (0.5 - (cy / h)) * state.tankHeight;
+        return { x, y };
+      }
+
+      /**
+       * Convert Tank Physical Coordinates (cm) to Canvas Pixel Coordinates
+       */
+      function physicalToCanvas(x, y) {
+        const w = tankCanvas.width;
+        const h = tankCanvas.height;
+        const cx = (x / state.tankWidth + 0.5) * w;
+        const cy = (0.5 - y / state.tankHeight) * h;
+        return { cx, cy };
+      }
+
+      /**
+       * Calculate Source Physical Coordinates
+       */
+      function getSourcePositions() {
+        const halfD = state.d / 2;
+        const yPos = state.sourceYPos === 'bottom' ? -15.0 : 0.0;
+        return {
+          s1: { x: -halfD, y: yPos },
+          s2: { x: halfD, y: yPos }
+        };
+      }
+
+      /**
+       * Wave Math Core Calculations
+       */
+      function calculateDisplacements(x, y, t) {
+        const sources = getSourcePositions();
+        
+        // Distances from sources
+        const r1 = Math.hypot(x - sources.s1.x, y - sources.s1.y);
+        const r2 = Math.hypot(x - sources.s2.x, y - sources.s2.y);
+
+        // Angular frequencies & wave numbers
+        const k1 = (2 * Math.PI) / state.lambda1;
+        const k2 = (2 * Math.PI) / state.lambda2;
+        const omega1 = k1 * state.v;
+        const omega2 = k2 * state.v;
+
+        // Attenuation / Damping factor with distance
+        const r0 = 1.5; // smoothing radius to avoid infinite source crest
+        const atten1 = Math.sqrt(r0 / (r1 + r0)) * Math.exp(-0.012 * r1);
+        const atten2 = Math.sqrt(r0 / (r2 + r0)) * Math.exp(-0.012 * r2);
+
+        // Instantaneous displacements
+        let z1 = 0;
+        let z2 = 0;
+
+        if (state.s1Active) {
+          z1 = atten1 * Math.cos(k1 * r1 - omega1 * t);
+        }
+        if (state.s2Active) {
+          z2 = atten2 * Math.cos(k2 * r2 - omega2 * t + state.phase2);
+        }
+
+        const zTotal = z1 + z2;
+
+        return { r1, r2, z1, z2, zTotal };
+      }
+
+      /**
+       * Mode 1: Render Schematic Wavefront Diagram
+       */
+      function renderSchematicMode(t) {
+        const w = tankCanvas.width;
+        const h = tankCanvas.height;
+        const sources = getSourcePositions();
+
+        // Dark Tank Background
+        tankCtx.fillStyle = '#050b14';
+        tankCtx.fillRect(0, 0, w, h);
+
+        // Grid Lines
+        tankCtx.strokeStyle = '#1e293b';
+        tankCtx.lineWidth = 1;
+        const gridStep = w / 8;
+        for (let i = 1; i < 8; i++) {
+          tankCtx.beginPath();
+          tankCtx.moveTo(i * gridStep, 0);
+          tankCtx.lineTo(i * gridStep, h);
+          tankCtx.stroke();
+          tankCtx.beginPath();
+          tankCtx.moveTo(0, i * gridStep);
+          tankCtx.lineTo(w, i * gridStep);
+          tankCtx.stroke();
+        }
+
+        // Draw Expanding Wavefront Arcs for S1
+        if (state.s1Active) {
+          const s1Pos = physicalToCanvas(sources.s1.x, sources.s1.y);
+          const maxR = state.tankWidth * 1.5;
+          const lambda = state.lambda1;
+          const phaseOffset = (state.v * t) % lambda;
+
+          for (let r = phaseOffset; r < maxR; r += lambda) {
+            if (r <= 0) continue;
+            const radiusPx = (r / state.tankWidth) * w;
+            const alpha = Math.max(0, 1 - r / maxR);
+
+            // Crest (Solid Cyan)
+            tankCtx.beginPath();
+            tankCtx.arc(s1Pos.cx, s1Pos.cy, radiusPx, 0, 2 * Math.PI);
+            tankCtx.strokeStyle = `rgba(6, 182, 212, ${0.85 * alpha})`;
+            tankCtx.lineWidth = 2;
+            tankCtx.setLineDash([]);
+            tankCtx.stroke();
+
+            // Trough (Dashed Cyan)
+            const troughR = r + lambda / 2;
+            const troughPx = (troughR / state.tankWidth) * w;
+            tankCtx.beginPath();
+            tankCtx.arc(s1Pos.cx, s1Pos.cy, troughPx, 0, 2 * Math.PI);
+            tankCtx.strokeStyle = `rgba(6, 182, 212, ${0.45 * alpha})`;
+            tankCtx.lineWidth = 1.2;
+            tankCtx.setLineDash([4, 4]);
+            tankCtx.stroke();
+          }
+        }
+
+        // Draw Expanding Wavefront Arcs for S2
+        if (state.s2Active) {
+          const s2Pos = physicalToCanvas(sources.s2.x, sources.s2.y);
+          const maxR = state.tankWidth * 1.5;
+          const lambda = state.lambda2;
+          const phaseOffset = ((state.v * t) - (state.phase2 / (2 * Math.PI) * lambda)) % lambda;
+          const normOffset = (phaseOffset + lambda * 100) % lambda;
+
+          for (let r = normOffset; r < maxR; r += lambda) {
+            if (r <= 0) continue;
+            const radiusPx = (r / state.tankWidth) * w;
+            const alpha = Math.max(0, 1 - r / maxR);
+
+            // Crest (Solid Fuchsia/Magenta)
+            tankCtx.beginPath();
+            tankCtx.arc(s2Pos.cx, s2Pos.cy, radiusPx, 0, 2 * Math.PI);
+            tankCtx.strokeStyle = `rgba(217, 70, 239, ${0.85 * alpha})`;
+            tankCtx.lineWidth = 2;
+            tankCtx.setLineDash([]);
+            tankCtx.stroke();
+
+            // Trough (Dashed Fuchsia/Magenta)
+            const troughR = r + lambda / 2;
+            const troughPx = (troughR / state.tankWidth) * w;
+            tankCtx.beginPath();
+            tankCtx.arc(s2Pos.cx, s2Pos.cy, troughPx, 0, 2 * Math.PI);
+            tankCtx.strokeStyle = `rgba(217, 70, 239, ${0.45 * alpha})`;
+            tankCtx.lineWidth = 1.2;
+            tankCtx.setLineDash([4, 4]);
+            tankCtx.stroke();
+          }
+        }
+
+        tankCtx.setLineDash([]); // Reset line dash
+      }
+
+      /**
+       * Mode 2: Real Interference Field Pixel Engine
+       */
+      function renderSimulationMode(t) {
+        const w = tankCanvas.width;
+        const h = tankCanvas.height;
+        let ptr = 0;
+
+        // Loop over physical grid buffer
+        for (let py = 0; py < SIM_RES; py++) {
+          const y = (0.5 - py / SIM_RES) * state.tankHeight;
+          for (let px = 0; px < SIM_RES; px++) {
+            const x = (px / SIM_RES - 0.5) * state.tankWidth;
+
+            const disp = calculateDisplacements(x, y, t);
+            // Total amplitude range approximately [-2, +2]
+            const zNorm = Math.min(1, Math.max(0, (disp.zTotal + 1.8) / 3.6));
+            const lutIndex = Math.floor(zNorm * 255);
+
+            simPixels[ptr++] = paletteLUT[lutIndex];
+          }
+        }
+
+        // Put buffer to offscreen canvas and draw scaled to main canvas
+        simCtx.putImageData(simImgData, 0, 0);
+        tankCtx.drawImage(simCanvas, 0, 0, w, h);
+      }
+
+      /**
+       * Dynamic Node & Antinode Hyperbola Overlay (Fully Symmetric Left & Right)
+       */
+      function renderNodeAntinodeOverlay() {
+        if (!state.showNodes || (!state.s1Active || !state.s2Active)) return;
+
+        const w = tankCanvas.width;
+        const h = tankCanvas.height;
+        const c = state.d / 2; // focal distance
+        const sources = getSourcePositions();
+        const ySrc = sources.s1.y;
+
+        // For identical wavelengths, hyperbolas are exact & stationary
+        const isMonochromatic = Math.abs(state.lambda1 - state.lambda2) < 0.01;
+        const lambda = (state.lambda1 + state.lambda2) / 2;
+
+        tankCtx.save();
+
+        if (isMonochromatic) {
+          const maxM = Math.ceil(state.d / lambda) + 3;
+          const phaseShiftLambda = (state.phase2 / (2 * Math.PI)) * lambda;
+
+          // 1. Antinodal Hyperbolas (|r1 - r2| = m * lambda + phase_shift)
+          for (let m = -maxM; m <= maxM; m++) {
+            const pathDiff = m * lambda + phaseShiftLambda;
+            const a = Math.abs(pathDiff) / 2;
+
+            if (a >= c) continue;
+
+            if (a < 0.001) {
+              // Central perpendicular line (m = 0)
+              const pTop = physicalToCanvas(0, state.tankHeight / 2);
+              const pBot = physicalToCanvas(0, -state.tankHeight / 2);
+              tankCtx.beginPath();
+              tankCtx.moveTo(pTop.cx, pTop.cy);
+              tankCtx.lineTo(pBot.cx, pBot.cy);
+              tankCtx.strokeStyle = 'rgba(234, 179, 8, 0.9)'; // Bright Yellow
+              tankCtx.lineWidth = 2.2;
+              tankCtx.stroke();
+            } else {
+              const b = Math.sqrt(c * c - a * a);
+              const sign = pathDiff >= 0 ? 1 : -1;
+
+              tankCtx.beginPath();
+              let started = false;
+              for (let u = -4.0; u <= 4.0; u += 0.08) {
+                const xHyp = sign * a * Math.cosh(u);
+                const yHyp = ySrc + b * Math.sinh(u);
+                const p = physicalToCanvas(xHyp, yHyp);
+
+                if (!started) {
+                  tankCtx.moveTo(p.cx, p.cy);
+                  started = true;
+                } else {
+                  tankCtx.lineTo(p.cx, p.cy);
+                }
+              }
+              tankCtx.strokeStyle = 'rgba(234, 179, 8, 0.8)'; // Golden Yellow
+              tankCtx.lineWidth = 1.8;
+              tankCtx.stroke();
+            }
+          }
+
+          // 2. Nodal Hyperbolas (|r1 - r2| = (m + 0.5) * lambda + phase_shift)
+          for (let m = -maxM; m <= maxM; m++) {
+            const pathDiff = (m + 0.5) * lambda + phaseShiftLambda;
+            const a = Math.abs(pathDiff) / 2;
+
+            if (a >= c) continue;
+
+            if (a < 0.001) {
+              const pTop = physicalToCanvas(0, state.tankHeight / 2);
+              const pBot = physicalToCanvas(0, -state.tankHeight / 2);
+              tankCtx.beginPath();
+              tankCtx.moveTo(pTop.cx, pTop.cy);
+              tankCtx.lineTo(pBot.cx, pBot.cy);
+              tankCtx.strokeStyle = 'rgba(239, 68, 68, 0.9)'; // Bright Red
+              tankCtx.lineWidth = 1.8;
+              tankCtx.setLineDash([5, 4]);
+              tankCtx.stroke();
+              tankCtx.setLineDash([]);
+            } else {
+              const b = Math.sqrt(c * c - a * a);
+              const sign = pathDiff >= 0 ? 1 : -1;
+
+              tankCtx.beginPath();
+              let started = false;
+              for (let u = -4.0; u <= 4.0; u += 0.08) {
+                const xHyp = sign * a * Math.cosh(u);
+                const yHyp = ySrc + b * Math.sinh(u);
+                const p = physicalToCanvas(xHyp, yHyp);
+
+                if (!started) {
+                  tankCtx.moveTo(p.cx, p.cy);
+                  started = true;
+                } else {
+                  tankCtx.lineTo(p.cx, p.cy);
+                }
+              }
+              tankCtx.strokeStyle = 'rgba(239, 68, 68, 0.85)'; // Crimson Red
+              tankCtx.lineWidth = 1.8;
+              tankCtx.setLineDash([5, 4]);
+              tankCtx.stroke();
+              tankCtx.setLineDash([]);
+            }
+          }
+        } else {
+          // Non-monochromatic case badge
+          tankCtx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+          tankCtx.fillRect(10, 10, 220, 26);
+          tankCtx.strokeStyle = 'rgba(51, 65, 85, 0.8)';
+          tankCtx.strokeRect(10, 10, 220, 26);
+          tankCtx.font = '11px Inter, sans-serif';
+          tankCtx.fillStyle = '#f59e0b';
+          tankCtx.fillText('⚡ Dynamic Fringes (λ₁ ≠ λ₂)', 18, 27);
+        }
+
+        tankCtx.restore();
+      }
+
+      /**
+       * Render Sources & Interactive Probe Overlay
+       */
+      function renderSourcesAndProbe() {
+        const w = tankCanvas.width;
+        const h = tankCanvas.height;
+        const sources = getSourcePositions();
+
+        // Source 1 Marker
+        const pS1 = physicalToCanvas(sources.s1.x, sources.s1.y);
+        tankCtx.beginPath();
+        tankCtx.arc(pS1.cx, pS1.cy, 7, 0, 2 * Math.PI);
+        tankCtx.fillStyle = state.s1Active ? '#06b6d4' : '#475569';
+        tankCtx.fill();
+        tankCtx.strokeStyle = '#ffffff';
+        tankCtx.lineWidth = 2;
+        tankCtx.stroke();
+        
+        tankCtx.font = 'bold 11px Fira Code, monospace';
+        tankCtx.fillStyle = '#06b6d4';
+        tankCtx.fillText('S₁', pS1.cx - 7, pS1.cy - 12);
+
+        // Source 2 Marker
+        const pS2 = physicalToCanvas(sources.s2.x, sources.s2.y);
+        tankCtx.beginPath();
+        tankCtx.arc(pS2.cx, pS2.cy, 7, 0, 2 * Math.PI);
+        tankCtx.fillStyle = state.s2Active ? '#d946ef' : '#475569';
+        tankCtx.fill();
+        tankCtx.strokeStyle = '#ffffff';
+        tankCtx.lineWidth = 2;
+        tankCtx.stroke();
+
+        tankCtx.fillStyle = '#d946ef';
+        tankCtx.fillText('S₂', pS2.cx - 7, pS2.cy - 12);
+
+        // Interactive Probe Marker
+        const pProbe = physicalToCanvas(state.probeX, state.probeY);
+        
+        // Outer pulsing target halo
+        tankCtx.beginPath();
+        tankCtx.arc(pProbe.cx, pProbe.cy, 12, 0, 2 * Math.PI);
+        tankCtx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
+        tankCtx.lineWidth = 1.5;
+        tankCtx.stroke();
+
+        // Crosshairs
+        tankCtx.beginPath();
+        tankCtx.moveTo(pProbe.cx - 6, pProbe.cy);
+        tankCtx.lineTo(pProbe.cx + 6, pProbe.cy);
+        tankCtx.moveTo(pProbe.cx, pProbe.cy - 6);
+        tankCtx.lineTo(pProbe.cx, pProbe.cy + 6);
+        tankCtx.strokeStyle = '#fbbf24';
+        tankCtx.lineWidth = 2;
+        tankCtx.stroke();
+
+        // Probe Dot
+        tankCtx.beginPath();
+        tankCtx.arc(pProbe.cx, pProbe.cy, 4, 0, 2 * Math.PI);
+        tankCtx.fillStyle = '#f59e0b';
+        tankCtx.fill();
+
+        tankCtx.fillStyle = '#fbbf24';
+        tankCtx.font = 'bold 10px Fira Code, monospace';
+        tankCtx.fillText('PROBE', pProbe.cx + 10, pProbe.cy + 4);
+      }
+
+      /**
+       * Oscilloscope Graph & Numerical Readout Engine
+       */
+      function updateScopeAndReadouts(t) {
+        const data = calculateDisplacements(state.probeX, state.probeY, t);
+
+        // Record history
+        scopeHistory.push({
+          t: t,
+          z1: data.z1,
+          z2: data.z2,
+          zTotal: data.zTotal
+        });
+
+        if (scopeHistory.length > MAX_SCOPE_SAMPLES) {
+          scopeHistory.shift();
+        }
+
+        // Render Oscilloscope Canvas
+        const sw = scopeCanvas.width;
+        const sh = scopeCanvas.height;
+        const midY = sh / 2;
+        const scaleY = sh / 4.2;
+
+        scopeCtx.fillStyle = '#020617';
+        scopeCtx.fillRect(0, 0, sw, sh);
+
+        // Grid lines
+        scopeCtx.strokeStyle = '#1e293b';
+        scopeCtx.lineWidth = 1;
+
+        // Zero center line
+        scopeCtx.beginPath();
+        scopeCtx.moveTo(0, midY);
+        scopeCtx.lineTo(sw, midY);
+        scopeCtx.stroke();
+
+        // Upper & Lower amplitude limit lines
+        scopeCtx.setLineDash([3, 3]);
+        scopeCtx.beginPath();
+        scopeCtx.moveTo(0, midY - scaleY);
+        scopeCtx.lineTo(sw, midY - scaleY);
+        scopeCtx.moveTo(0, midY + scaleY);
+        scopeCtx.lineTo(sw, midY + scaleY);
+        scopeCtx.stroke();
+        scopeCtx.setLineDash([]);
+
+        if (scopeHistory.length > 1) {
+          const stepX = sw / (MAX_SCOPE_SAMPLES - 1);
+
+          // 1. Draw S1 Trace (Cyan)
+          scopeCtx.beginPath();
+          for (let i = 0; i < scopeHistory.length; i++) {
+            const x = i * stepX;
+            const y = midY - scopeHistory[i].z1 * scaleY;
+            if (i === 0) scopeCtx.moveTo(x, y);
+            else scopeCtx.lineTo(x, y);
+          }
+          scopeCtx.strokeStyle = 'rgba(6, 182, 212, 0.7)';
+          scopeCtx.lineWidth = 1.5;
+          scopeCtx.stroke();
+
+          // 2. Draw S2 Trace (Magenta)
+          scopeCtx.beginPath();
+          for (let i = 0; i < scopeHistory.length; i++) {
+            const x = i * stepX;
+            const y = midY - scopeHistory[i].z2 * scaleY;
+            if (i === 0) scopeCtx.moveTo(x, y);
+            else scopeCtx.lineTo(x, y);
+          }
+          scopeCtx.strokeStyle = 'rgba(217, 70, 239, 0.7)';
+          scopeCtx.lineWidth = 1.5;
+          scopeCtx.stroke();
+
+          // 3. Draw Total Wave Trace (Bold Amber/Yellow)
+          scopeCtx.beginPath();
+          for (let i = 0; i < scopeHistory.length; i++) {
+            const x = i * stepX;
+            const y = midY - scopeHistory[i].zTotal * scaleY;
+            if (i === 0) scopeCtx.moveTo(x, y);
+            else scopeCtx.lineTo(x, y);
+          }
+          scopeCtx.strokeStyle = '#f59e0b';
+          scopeCtx.lineWidth = 2.5;
+          scopeCtx.stroke();
+        }
+
+        // Update Text Readouts
+        probeCoordsReadout.textContent = `(${state.probeX.toFixed(1)}, ${state.probeY.toFixed(1)}) cm`;
+        readoutR1.textContent = `${data.r1.toFixed(1)} cm`;
+        readoutR2.textContent = `${data.r2.toFixed(1)} cm`;
+        
+        const dr = Math.abs(data.r1 - data.r2);
+        readoutDr.textContent = `${dr.toFixed(2)} cm`;
+        readoutZ.textContent = `${data.zTotal >= 0 ? '+' : ''}${data.zTotal.toFixed(2)}`;
+
+        // Interference State Classification
+        const avgLambda = (state.lambda1 + state.lambda2) / 2;
+        const remainder = (dr % avgLambda) / avgLambda;
+
+        if (!state.s1Active || !state.s2Active) {
+          interferenceBadge.textContent = 'Single Source';
+          interferenceBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700';
+        } else if (remainder < 0.15 || remainder > 0.85) {
+          interferenceBadge.textContent = '🟢 Constructive';
+          interferenceBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800';
+        } else if (remainder > 0.35 && remainder < 0.65) {
+          interferenceBadge.textContent = '🔴 Destructive Node';
+          interferenceBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800';
+        } else {
+          interferenceBadge.textContent = '🟡 Intermediate';
+          interferenceBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800';
+        }
+      }
+
+      /**
+       * Main Animation Frame Loop
+       */
+      let lastTimestamp = 0;
+
+      function animate(timestamp) {
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        const dt = (timestamp - lastTimestamp) / 1000;
+        lastTimestamp = timestamp;
+
+        if (state.isPlaying) {
+          state.simTime += dt * state.timeSpeed;
+        }
+
+        // 1. Render Wave Field (Mode 1 or Mode 2)
+        if (state.mode === 'schematic') {
+          renderSchematicMode(state.simTime);
+        } else {
+          renderSimulationMode(state.simTime);
+        }
+
+        // 2. Render Node/Antinode Hyperbola Overlay
+        renderNodeAntinodeOverlay();
+
+        // 3. Render Sources & Interactive Probe
+        renderSourcesAndProbe();
+
+        // 4. Update Oscilloscope & Numerical Readouts
+        updateScopeAndReadouts(state.simTime);
+
+        requestAnimationFrame(animate);
+      }
+
+      /**
+       * UI Event Handlers & Control Synchronizer
+       */
+      function syncUIControls() {
+        valSpeed.textContent = `${state.v.toFixed(1)} cm/s`;
+        sliderSpeed.value = state.v;
+
+        valSep.textContent = `${state.d.toFixed(1)} cm`;
+        sliderSep.value = state.d;
+
+        valLambda1.textContent = `${state.lambda1.toFixed(1)} cm`;
+        sliderLambda1.value = state.lambda1;
+
+        valLambda2.textContent = `${state.lambda2.toFixed(1)} cm`;
+        sliderLambda2.value = state.lambda2;
+
+        const deg = Math.round((state.phase2 * 180) / Math.PI);
+        valPhase.textContent = `${deg}° ${deg === 0 ? '(In-Phase)' : deg === 180 ? '(Out-of-Phase)' : ''}`;
+        sliderPhase.value = deg;
+
+        toggleS1.checked = state.s1Active;
+        toggleS2.checked = state.s2Active;
+        toggleNodes.checked = state.showNodes;
+      }
+
+      // Slider Listeners
+      sliderSpeed.addEventListener('input', (e) => {
+        state.v = parseFloat(e.target.value);
+        syncUIControls();
+      });
+
+      sliderSep.addEventListener('input', (e) => {
+        state.d = parseFloat(e.target.value);
+        syncUIControls();
+      });
+
+      sliderLambda1.addEventListener('input', (e) => {
+        state.lambda1 = parseFloat(e.target.value);
+        syncUIControls();
+      });
+
+      sliderLambda2.addEventListener('input', (e) => {
+        state.lambda2 = parseFloat(e.target.value);
+        syncUIControls();
+      });
+
+      sliderPhase.addEventListener('input', (e) => {
+        const deg = parseFloat(e.target.value);
+        state.phase2 = (deg * Math.PI) / 180;
+        syncUIControls();
+      });
+
+      // Quick Sync Actions
+      btnSyncLambda.addEventListener('click', () => {
+        state.lambda2 = state.lambda1;
+        syncUIControls();
+      });
+
+      btnZeroPhase.addEventListener('click', () => {
+        state.phase2 = 0;
+        syncUIControls();
+      });
+
+      // Mode Switchers
+      // Source Position Toggle Event Handlers
+      const btnPosCenter = document.getElementById('btn-pos-center');
+      const btnPosBottom = document.getElementById('btn-pos-bottom');
+
+      btnPosCenter.addEventListener('click', () => {
+        state.sourceYPos = 'center';
+        btnPosCenter.className = 'px-2.5 py-1 rounded bg-cyan-950 text-cyan-400 font-semibold transition-all';
+        btnPosBottom.className = 'px-2.5 py-1 rounded text-slate-400 hover:text-white transition-all';
+      });
+
+      btnPosBottom.addEventListener('click', () => {
+        state.sourceYPos = 'bottom';
+        btnPosBottom.className = 'px-2.5 py-1 rounded bg-cyan-950 text-cyan-400 font-semibold transition-all';
+        btnPosCenter.className = 'px-2.5 py-1 rounded text-slate-400 hover:text-white transition-all';
+      });
+
+      // Switches
+      toggleS1.addEventListener('change', (e) => {
+        state.s1Active = e.target.checked;
+      });
+
+      toggleS2.addEventListener('change', (e) => {
+        state.s2Active = e.target.checked;
+      });
+
+      toggleNodes.addEventListener('change', (e) => {
+        state.showNodes = e.target.checked;
+      });
+
+      // Theme Buttons
+      document.querySelectorAll('.btn-theme').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.btn-theme').forEach(b => {
+            b.className = 'btn-theme p-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:text-white text-center';
+          });
+          const target = e.currentTarget;
+          target.className = 'btn-theme p-2 rounded-lg border border-cyan-500/80 bg-slate-950 text-cyan-300 text-center font-bold';
+          state.theme = target.dataset.theme;
+          updatePaletteLUT();
+        });
+      });
+
+      // Simulation Time Controls
+      btnPlayPause.addEventListener('click', () => {
+        state.isPlaying = !state.isPlaying;
+        if (state.isPlaying) {
+          textPlayPause.textContent = 'Pause';
+          iconPlayPause.innerHTML = `<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>`;
+        } else {
+          textPlayPause.textContent = 'Play';
+          iconPlayPause.innerHTML = `<path d="M8 5v14l11-7z"/>`;
+        }
+      });
+
+      btnStep.addEventListener('click', () => {
+        state.isPlaying = false;
+        textPlayPause.textContent = 'Play';
+        iconPlayPause.innerHTML = `<path d="M8 5v14l11-7z"/>`;
+        state.simTime += 0.04; // Advance 40ms
+      });
+
+      btnReset.addEventListener('click', () => {
+        state.simTime = 0.0;
+        scopeHistory.length = 0;
+      });
+
+      // Speed Buttons
+      document.querySelectorAll('.btn-speed').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.btn-speed').forEach(b => {
+            b.className = 'btn-speed px-2 py-0.5 rounded text-slate-400 hover:text-white';
+          });
+          e.currentTarget.className = 'btn-speed px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 font-semibold';
+          state.timeSpeed = parseFloat(e.currentTarget.dataset.speed);
+        });
+      });
+
+      // Presets Handler
+      presetSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        state.s1Active = true;
+        state.s2Active = true;
+        state.phase2 = 0;
+
+        if (val === 'identical') {
+          state.lambda1 = 4.0;
+          state.lambda2 = 4.0;
+          state.d = 12.0;
+          state.v = 12.0;
+        } else if (val === 'beats') {
+          state.lambda1 = 3.2;
+          state.lambda2 = 4.8;
+          state.d = 14.0;
+          state.v = 12.0;
+        } else if (val === 'out-phase') {
+          state.lambda1 = 4.0;
+          state.lambda2 = 4.0;
+          state.d = 12.0;
+          state.phase2 = Math.PI; // 180 degrees
+        } else if (val === 'youngs') {
+          state.lambda1 = 3.5;
+          state.lambda2 = 3.5;
+          state.d = 6.0;
+          state.v = 12.0;
+        } else if (val === 'single') {
+          state.lambda1 = 4.0;
+          state.s2Active = false;
+        }
+        syncUIControls();
+      });
+
+      // Interactive Tank Dragging & Clicking for Probe Positioning
+      function handleProbeInput(e) {
+        const rect = tankCanvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        const cx = (clientX - rect.left) * (tankCanvas.width / rect.width);
+        const cy = (clientY - rect.top) * (tankCanvas.height / rect.height);
+
+        const phys = canvasToPhysical(cx, cy);
+        
+        // Clamp to tank dimensions
+        state.probeX = Math.max(-state.tankWidth / 2, Math.min(state.tankWidth / 2, phys.x));
+        state.probeY = Math.max(-state.tankHeight / 2, Math.min(state.tankHeight / 2, phys.y));
+      }
+
+      tankCanvas.addEventListener('mousedown', (e) => {
+        state.isDraggingProbe = true;
+        handleProbeInput(e);
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (state.isDraggingProbe) {
+          handleProbeInput(e);
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        state.isDraggingProbe = false;
+      });
+
+      tankCanvas.addEventListener('touchstart', (e) => {
+        state.isDraggingProbe = true;
+        handleProbeInput(e);
+      }, { passive: true });
+
+      window.addEventListener('touchmove', (e) => {
+        if (state.isDraggingProbe) {
+          handleProbeInput(e);
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchend', () => {
+        state.isDraggingProbe = false;
+      });
+
+      // Kickoff Simulation Engine
+      syncUIControls();
+      requestAnimationFrame(animate);
+
+    })();
+  </script>
+</body>
+</html>
